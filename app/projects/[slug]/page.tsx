@@ -4,8 +4,14 @@ import { ProjectDetail } from '@/components/projects/project-detail'
 import { getAllProjects, getProjectBySlug, getNextProject } from '@/lib/projects'
 
 export async function generateStaticParams() {
-  const projects = await getAllProjects()
-  return projects.map((p) => ({ slug: p.slug }))
+  try {
+    const projects = await getAllProjects()
+    return projects.map((p) => ({ slug: p.slug }))
+  } catch {
+    // DB may not be reachable during build (e.g. on Vercel).
+    // Page will be server-rendered on demand instead.
+    return []
+  }
 }
 
 export async function generateMetadata({
