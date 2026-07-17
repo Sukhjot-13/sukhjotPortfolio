@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ArrowUpRight, ExternalLink, GitBranch } from 'lucide-react'
@@ -31,13 +30,10 @@ export function ProjectDetail({
         transition={{ duration: 0.7, ease: EASE }}
         className="relative mt-6 aspect-[16/9] overflow-hidden rounded-3xl border border-border"
       >
-        <Image
+        <img
           src={project.image || '/placeholder.svg'}
           alt={project.title}
-          fill
-          priority
-          sizes="(max-width: 896px) 100vw, 896px"
-          className="object-cover"
+          className="absolute inset-0 size-full object-cover"
         />
       </motion.div>
 
@@ -134,12 +130,10 @@ export function ProjectDetail({
             variants={reveal}
             className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border"
           >
-            <Image
+            <img
               src={src || '/placeholder.svg'}
               alt={`${project.title} screenshot ${i + 1}`}
-              fill
-              sizes="(max-width: 640px) 100vw, 50vw"
-              className="object-cover"
+              className="absolute inset-0 size-full object-cover"
             />
           </motion.div>
         ))}

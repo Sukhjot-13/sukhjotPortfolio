@@ -12,6 +12,15 @@ export default async function ProjectsPage() {
   const projects = await getAllProjects()
   const techTags = await getAllTechTags()
 
+  // Replace base64 images with API URLs so the RSC payload stays small
+  const clientProjects = projects.map((p) => ({
+    ...p,
+    image: `/api/projects/${p.slug}/image`,
+    gallery: p.gallery.map((_, i) =>
+      `/api/projects/${p.slug}/gallery/${i}`,
+    ),
+  }))
+
   return (
     <div className="mx-auto max-w-6xl px-5 pb-24 pt-32 md:px-8 md:pt-40">
       <PageHeading
@@ -19,7 +28,7 @@ export default async function ProjectsPage() {
         title="My Work"
         subtitle="A selection of systems and products I've designed and shipped. Filter by the tools behind each one."
       />
-      <ProjectsGallery projects={projects} allTech={techTags} />
+      <ProjectsGallery projects={clientProjects} allTech={techTags} />
     </div>
   )
 }

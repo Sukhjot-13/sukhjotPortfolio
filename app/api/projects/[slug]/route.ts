@@ -9,12 +9,20 @@ export async function GET(
   try {
     await connectDB()
     const { slug } = await params
-    const project = await Project.findOne({ slug }).lean()
-    if (!project) {
+    const doc = await Project.findOne({ slug }).lean()
+    if (!doc) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 },
       )
+    }
+    // Replace base64 images with API URLs to keep the response small
+    const project = {
+      ...doc,
+      image: `/api/projects/${slug}/image`,
+      gallery: (doc.gallery as string[]).map((_, i) =>
+        `/api/projects/${slug}/gallery/${i}`,
+      ),
     }
     return NextResponse.json(project)
   } catch (error) {

@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
   motion,
@@ -46,12 +45,10 @@ export function ProjectCard({ project }: { project: ProjectData }) {
       className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card transition-colors duration-[250ms] hover:border-gold/50"
     >
       <div className="relative aspect-[16/10] overflow-hidden">
-        <Image
+        <img
           src={project.image || '/placeholder.svg'}
           alt={project.title}
-          fill
-          sizes="(max-width: 768px) 100vw, 50vw"
-          className="object-cover transition-transform duration-[250ms] ease-out group-hover:scale-[1.03]"
+          className="absolute inset-0 size-full object-cover transition-transform duration-[250ms] ease-out group-hover:scale-[1.03]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />
       </div>
@@ -97,12 +94,10 @@ export function FeaturedCard({ project }: { project: ProjectData }) {
     >
       <div className="grid md:grid-cols-2">
         <div className="relative aspect-[16/11] overflow-hidden md:aspect-auto">
-          <Image
+          <img
             src={project.image || '/placeholder.svg'}
             alt={project.title}
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
+            className="absolute inset-0 size-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-card/60 md:to-card" />
         </div>

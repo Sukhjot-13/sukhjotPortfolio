@@ -27,6 +27,25 @@ export default async function ProjectPage({
   const { slug } = await params
   const project = await getProjectBySlug(slug)
   if (!project) notFound()
-  const next = await getNextProject(slug)
-  return <ProjectDetail project={project} next={next ?? project} />
+  const next = await getNextProject(slug) ?? project
+
+  // Replace base64 data with API URLs so the RSC payload stays small.
+  // Images are served separately via /api/projects/[slug]/image and
+  // /api/projects/[slug]/gallery/[index].
+  const clientProject = {
+    ...project,
+    image: `/api/projects/${project.slug}/image`,
+    gallery: project.gallery.map((_, i) =>
+      `/api/projects/${project.slug}/gallery/${i}`,
+    ),
+  }
+  const clientNext = {
+    ...next,
+    image: `/api/projects/${next.slug}/image`,
+    gallery: next.gallery.map((_, i) =>
+      `/api/projects/${next.slug}/gallery/${i}`,
+    ),
+  }
+
+  return <ProjectDetail project={clientProject} next={clientNext} />
 }
