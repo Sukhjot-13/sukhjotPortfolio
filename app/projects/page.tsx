@@ -3,6 +3,8 @@ import { PageHeading } from '@/components/page-heading'
 import { ProjectsGallery } from '@/components/projects/projects-gallery'
 import { getAllProjects, getAllTechTags } from '@/lib/projects'
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Projects — Sukhjot',
   description: 'A selection of full-stack projects, systems, and interfaces.',
