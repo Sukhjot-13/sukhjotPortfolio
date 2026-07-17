@@ -20,10 +20,9 @@ export function AboutTeaser() {
             About
           </span>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-balance md:text-4xl">
-            {/* TODO: Replace with your tagline */}A developer obsessed with the space between fast and elegant.
+            A developer obsessed with the space between fast and elegant.
           </h2>
           <p className="mt-5 max-w-md leading-relaxed text-muted-foreground">
-            {/* TODO: Replace with your bio teaser text */}
             I build products end-to-end — owning
             architecture, infrastructure, and the last mile of polish that makes
             software feel effortless.
@@ -50,7 +49,7 @@ export function AboutTeaser() {
           <div className="relative mx-auto aspect-[4/5] w-full max-w-sm overflow-hidden rounded-3xl border border-border">
             <Image
               src="/portrait.jpeg"
-              alt="Portrait of Julian Vega"
+              alt="Portrait of Sukhjot"
               fill
               sizes="(max-width: 768px) 100vw, 400px"
               className="object-cover"
