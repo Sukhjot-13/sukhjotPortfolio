@@ -1,7 +1,7 @@
 # Architecture - Portfolio Website (v0portfolio-website)
 
 > This document describes every file in the portfolio project, its purpose, and the functions it contains.
-> Last updated: 2026-07-16 (project-detail buttons conditional, sorting fixed to createdAt, navbar/footer dots removed, gallery upload fixed, about page timeline/skills updated)
+> Last updated: 2026-07-17 (base64 images replaced with API routes, Brevo email notifications, social links updated, about page placeholders filled)
 
 ## Project Overview
 
@@ -112,18 +112,19 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `metadata` — Title "Contact — Sukhjot", description "Get in touch..."
 
 ### `app/projects/page.tsx`
-- **Purpose:** Projects listing page route. Sets metadata and renders heading + gallery.
+- **Purpose:** Projects listing page route. Sets metadata and renders heading + gallery. Replaces base64 images with API URLs before passing to client component.
 - **Functions:**
-  - `ProjectsPage()` — Renders `<PageHeading>` with eyebrow "Portfolio", title "My Work", subtitle, and `<ProjectsGallery />`
+  - `ProjectsPage()` — Fetches all projects, maps `image`/`gallery` to API URLs (avoids base64 in RSC payload), renders `<PageHeading>` and `<ProjectsGallery />`
 - **Exports:**
   - `metadata` — Title "Projects — Sukhjot", description "A selection of full-stack projects..."
 
 ### `app/projects/[slug]/page.tsx`
-- **Purpose:** Dynamic project detail page. Uses `[slug]` route segment to render a single project.
+- **Purpose:** Dynamic project detail page. Uses `[slug]` route segment to render a single project. Server-rendered on demand (`dynamic = 'force-dynamic'`) to avoid oversized base64 images in static HTML.
 - **Functions:**
-  - `generateStaticParams()` — Returns an array of `{ slug }` objects for all projects (static generation, fetched from MongoDB)
   - `generateMetadata({ params })` — Generates dynamic metadata (title = `${project.title} — Sukhjot`, description = project.blurb); returns "Project not found" if slug is invalid
-  - `ProjectPage({ params })` — Awaits `params.slug`, looks up project via API, calls `notFound()` if missing, gets next project, renders `<ProjectDetail />`
+  - `ProjectPage({ params })` — Awaits `params.slug`, looks up project via API, calls `notFound()` if missing, gets next project, replaces base64 images with API URLs, renders `<ProjectDetail />`
+- **Exports:**
+  - `dynamic = 'force-dynamic'` — Disables static generation to avoid oversized RSC payload
 
 ### `app/testimonials/page.tsx`
 - **Purpose:** Testimonials page route. Sets metadata and renders heading + carousel.
@@ -137,17 +138,27 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `app/api/` — API Routes (MongoDB)
 
 ### `app/api/projects/route.ts`
-- **Purpose:** API route for projects (GET all, POST new).
+- **Purpose:** API route for projects (GET all, POST new). Replaces base64 images with API URLs in response.
 - **Functions:**
-  - `GET()` — Fetches all projects from MongoDB, returns sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter.
+  - `GET()` — Fetches all projects from MongoDB, returns sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter. Maps base64 `image`/`gallery` to API URLs.
   - `POST(request)` — Creates a new project from JSON body, saves to MongoDB, returns created project.
 
 ### `app/api/projects/[slug]/route.ts`
-- **Purpose:** API route for single project operations (GET, PUT, DELETE by slug).
+- **Purpose:** API route for single project operations (GET, PUT, DELETE by slug). Replaces base64 images with API URLs in response.
 - **Functions:**
-  - `GET(request, { params })` — Fetches a single project by slug
+  - `GET(request, { params })` — Fetches a single project by slug, maps base64 images to API URLs
   - `PUT(request, { params })` — Updates a project by slug with partial body
   - `DELETE(request, { params })` — Deletes a project by slug
+
+### `app/api/projects/[slug]/image/route.ts`
+- **Purpose:** Serves a project's main image from MongoDB base64 data as a binary response.
+- **Functions:**
+  - `GET(request, { params })` — Looks up project by slug, parses base64 data URI (or raw base64), returns image with proper Content-Type and long-lived cache headers
+
+### `app/api/projects/[slug]/gallery/[index]/route.ts`
+- **Purpose:** Serves a single gallery image for a project from MongoDB base64 data as a binary response.
+- **Functions:**
+  - `GET(request, { params })` — Looks up project by slug and gallery index, parses base64, returns image with proper Content-Type and long-lived cache headers
 
 ### `app/api/testimonials/route.ts`
 - **Purpose:** API route for testimonials (GET all, POST new).
@@ -156,9 +167,10 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `POST(request)` — Creates a new testimonial from JSON body
 
 ### `app/api/contact/route.ts`
-- **Purpose:** API route for contact message submissions (POST new).
+- **Purpose:** API route for contact message submissions (POST new). Saves to MongoDB and sends Brevo email notification.
 - **Functions:**
-  - `POST(request)` — Saves a contact message (name, email, message) to MongoDB with timestamp
+  - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if API key is not set.
+  - `POST(request)` — Validates name/email/message, saves to MongoDB, fires `sendBrevoEmail()` (fire-and-forget, doesn't block response)
 
 ### `app/api/contact/messages/route.ts`
 - **Purpose:** API route to read contact messages (used by admin).
@@ -186,7 +198,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `Footer()` — Renders:
     - Brand link "Sukhjot"
     - Tagline "Full-stack developer · Building for the web"
-    - Social links (GitHub, LinkedIn, Email) as icon buttons
+    - Social links (GitHub: Sukhjot-13, LinkedIn: sukhjot-singh-691b99167, Email: sukhjotsingh441@gmail.com) as icon buttons
     - Copyright line with current year
 
 ### `components/gold-button.tsx`
@@ -216,11 +228,11 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `PageHeading({ eyebrow, title, subtitle })` — Renders a `motion.div` with fade+slide-up animation, monospace gold eyebrow, display-font title, and muted subtitle line
 
 ### `components/project-card.tsx`
-- **Purpose:** Interactive project card with 3D tilt effect on hover, and a larger featured card variant.
+- **Purpose:** Interactive project card with 3D tilt effect on hover, and a larger featured card variant. Uses `<img>` tags (not `next/image`) for API-served image URLs.
 - **Functions:**
   - `ProjectCard({ project })` — Renders a card with:
     - 3D tilt via `useMotionValue`/`useSpring`/`useTransform` (rotateX/rotateY based on mouse position within card)
-    - Image (Base64 or URL fallback), title, blurb, tech tags
+    - Image (API-served URL), title, blurb, tech tags
     - Arrow icon, navigation to `/projects/${slug}` on click
     - Gold glow border and `inset` shadow on hover
     - Helper: `handleMove(e)` — updates motion values, `handleLeave()` — resets motion values
@@ -276,7 +288,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - `GoldButton` submit with 3 states: `idle` ("Send Message" + Send icon), `loading` ("Sending" + Loader2 spinner), `success` ("Message Sent" + Check icon + thank-you message)
     - `handleSubmit(e)` — Prevents default, POSTs form data to `/api/contact`, handles loading/success states
   - **State:** `status` — `"idle" | "loading" | "success"`
-  - **Data:** `fields[]` (name, email), `socials[]` (GitHub, LinkedIn, Email) — sidebar with animated links
+  - **Data:** `fields[]` (name, email), `socials[]` (GitHub: Sukhjot-13, LinkedIn: sukhjot-singh-691b99167, Email: sukhjotsingh441@gmail.com) — sidebar with animated links
 
 ---
 
@@ -306,7 +318,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Purpose:** About teaser section on the homepage — portrait + CTA to about page.
 - **Functions:**
   - `AboutTeaser()` — Renders:
-    - Left column: eyebrow "About", heading (TODO: replace with Sukhjot's tagline), descriptive paragraph, "Learn More About Me" link with animated underline
+    - Left column: eyebrow "About", tagline "A developer obsessed with the space between fast and elegant.", descriptive paragraph, "Learn More About Me" link with animated underline
     - Right column: Portrait image with gradient overlay in a rounded container with glow backdrop
     - Scroll-reveal from left/right directions
 
@@ -315,11 +327,11 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `components/projects/` — Project Features
 
 ### `components/projects/project-detail.tsx`
-- **Purpose:** Full project detail view — hero image, metadata, description, gallery, CTAs, and next project navigation. Demo/Code buttons only render when the respective link exists (project.demo / project.github is non-empty).
+- **Purpose:** Full project detail view — hero image, metadata, description, gallery, CTAs, and next project navigation. Demo/Code buttons only render when the respective link exists (project.demo / project.github is non-empty). Uses `<img>` tags for API-served image URLs.
 - **Functions:**
   - `ProjectDetail({ project, next })` — Renders:
     - "Back to Projects" link with arrow
-    - Large hero image with scale-in animation (supports Base64 image data)
+    - Large hero image with scale-in animation (API-served image URL)
     - Project title, metadata grid (Role, Year, Links/Demo/Code)
     - Tech stack tags with staggered reveal
     - Description paragraphs (from `project.description` array)
