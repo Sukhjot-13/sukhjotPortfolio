@@ -170,7 +170,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Purpose:** API route for contact message submissions (POST new). Saves to MongoDB and sends Brevo email notification.
 - **Functions:**
   - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if API key is not set.
-  - `POST(request)` — Validates name/email/message, saves to MongoDB, fires `sendBrevoEmail()` (fire-and-forget, doesn't block response)
+  - `POST(request)` — Validates name/email/message, saves to MongoDB, awaits `sendBrevoEmail()` before returning
 
 ### `app/api/contact/messages/route.ts`
 - **Purpose:** API route to read contact messages (used by admin).

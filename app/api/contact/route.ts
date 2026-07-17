@@ -86,12 +86,12 @@ export async function POST(request: Request) {
       message: body.message,
     })
 
-    // Fire-and-forget email notification — don't block the response
-    sendBrevoEmail({
+    // Send email notification — await so Vercel doesn't kill the request
+    await sendBrevoEmail({
       name: body.name,
       email: body.email,
       message: body.message,
-    }).catch((err) => console.error('Brevo email error:', err))
+    })
 
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
