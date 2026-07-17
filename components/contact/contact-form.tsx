@@ -17,9 +17,9 @@ const fields = [
 ] as const
 
 const socials = [
-  { href: 'https://github.com', label: 'GitHub', icon: GitBranch },
-  { href: 'https://linkedin.com', label: 'LinkedIn', icon: Link2 },
-  { href: 'mailto:hello@sukhjot.dev', label: 'Email', icon: Mail },
+  { href: 'https://github.com/Sukhjot-13', label: 'GitHub', icon: GitBranch },
+  { href: 'https://www.linkedin.com/in/sukhjot-singh-691b99167/', label: 'LinkedIn', icon: Link2 },
+  { href: 'mailto:sukhjotsingh441@gmail.com', label: 'Email', icon: Mail },
 ]
 
 type Status = 'idle' | 'loading' | 'success'

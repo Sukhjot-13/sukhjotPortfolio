@@ -110,7 +110,7 @@ export function AboutContent() {
           <div className="relative aspect-square w-[240px] overflow-hidden rounded-full border-2 border-gold/40">
             <Image
               src="/portrait.jpeg"
-              alt="Portrait of Julian Vega"
+              alt="Portrait of Sukhjot"
               fill
               sizes="240px"
               className="object-cover"
@@ -130,17 +130,14 @@ export function AboutContent() {
             button on hover.
           </p>
           <p>
-            {/* TODO: Replace this paragraph with your actual bio. Talk about your experience, what you specialize in, and your approach to building software. */}
             My sweet spot is owning a product end-to-end: modeling the data,
             designing the APIs, wiring the infrastructure, and then sweating the
             last mile of interface polish. I believe the details are the
             product.
           </p>
           <p>
-            {/* TODO: Replace this paragraph — talk about what you do when not coding, your philosophy, etc. */}
-            When I'm not building, I'm usually reverse-engineering something I
-            admire, mentoring engineers, or chasing good coffee and long trail
-            runs.
+            When I'm not building, I&apos;m usually tinkering with new tech,
+            mentoring fellow developers, or exploring the outdoors around Ontario.
           </p>
         </motion.div>
       </div>
