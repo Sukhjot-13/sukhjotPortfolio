@@ -12,15 +12,21 @@ async function sendBrevoEmail({
   message: string
 }) {
   const apiKey = process.env.BREVO_API_KEY
-  if (!apiKey) {
-    console.warn('BREVO_API_KEY not set — skipping email notification')
-    return
-  }
-
   const senderEmail = process.env.BREVO_SENDER_EMAIL || 'sukhjotsingh441@gmail.com'
   const senderName = process.env.BREVO_SENDER_NAME || 'Portfolio Contact'
   const toEmail = process.env.BREVO_TO_EMAIL || 'sukhjotsingh441@gmail.com'
   const toName = process.env.BREVO_TO_NAME || 'Sukhjot'
+
+  console.log('[Brevo] Preparing email...')
+  console.log('[Brevo] API key set:', !!apiKey)
+  console.log('[Brevo] Sender:', senderEmail, `(${senderName})`)
+  console.log('[Brevo] Recipient:', toEmail, `(${toName})`)
+  console.log('[Brevo] Reply-To:', email, `(${name})`)
+
+  if (!apiKey) {
+    console.warn('[Brevo] BREVO_API_KEY not set — skipping email notification')
+    return
+  }
 
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
@@ -36,6 +42,7 @@ async function sendBrevoEmail({
     </div>
   `
 
+  console.log('[Brevo] Sending request to Brevo API...')
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -51,9 +58,13 @@ async function sendBrevoEmail({
     }),
   })
 
+  console.log('[Brevo] Response status:', res.status)
+
   if (!res.ok) {
     const text = await res.text()
-    console.error('Brevo email send failed:', res.status, text)
+    console.error('[Brevo] Email send FAILED:', res.status, text)
+  } else {
+    console.log('[Brevo] Email sent successfully!')
   }
 }
 
