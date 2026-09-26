@@ -1,7 +1,8 @@
 # Architecture - Portfolio Website (v0portfolio-website)
 
 > This document describes every file in the portfolio project, its purpose, and the functions it contains.
-> Last updated: 2026-09-26 (audit: eslint wired up + config added, gallery-undefined crash fix, contact HTML-escape + email validation, navbar render-pattern close, img lint suppressions)
+> Last updated: 2026-09-26 (audit: navbar render-close fix, projects-gallery props-driven fix, projects/page dynamic+techTags fix, slug page lib-helper fix, mongoose v9 fix, env-vars section added, missing-file entries added)
+> NOTE (location deviation): AGENTS.md requires `docs/architecture.md`, but this repo keeps `architecture.md` at the repo ROOT. Kept at root per instruction — not moved. `docs/suggestions.md` / `docs/to-do.md` do not exist in this repo.
 
 ## Project Overview
 
@@ -25,7 +26,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `shadcn` ^4.8.0 — shadcn/ui CLI
   - `@vercel/analytics` 1.6.1 — Vercel analytics
   - `tw-animate-css` ^1.4.0 — Tailwind animation utilities
-  - `mongoose` ^8.x — MongoDB ODM
+  - `mongoose` ^9.7.4 — MongoDB ODM
 - **Dev Dependencies:**
   - `tailwindcss` ^4.2.0, `@tailwindcss/postcss` ^4.2.0
   - `typescript` 5.7.3, `@types/node` ^24, `@types/react` ^19, `@types/react-dom` ^19
@@ -70,6 +71,17 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `next-env.d.ts`
 - **Purpose:** Next.js TypeScript declarations (auto-generated).
 - **Content:** References Next.js types, imports routes types.
+
+### `AGENTS.md`
+- **Purpose:** Repo-local AI agent guidelines (architecture-docs conventions, testing, permission standards).
+- **Content:** No functions — policy doc. Requires `docs/architecture.md` + env-vars section (this repo deviates: uses root `architecture.md`).
+
+### `architecture.md` (this file)
+- **Purpose:** Always-current file/function inventory + env vars (root location — see deviation note at top).
+- **Content:** No functions — documentation.
+
+### `package-lock.json`
+- **Purpose:** Locked dependency tree (npm). No functions.
 
 ---
 
@@ -117,17 +129,18 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `metadata` — Title "Contact — Sukhjot", description "Get in touch..."
 
 ### `app/projects/page.tsx`
-- **Purpose:** Projects listing page route. Sets metadata and renders heading + gallery. Replaces base64 images with API URLs before passing to client component.
+- **Purpose:** Projects listing page route (server component, `dynamic = 'force-dynamic'`). Fetches projects + tech tags via lib helpers, replaces base64 images with API URLs before passing to client component.
 - **Functions:**
-  - `ProjectsPage()` — Fetches all projects, maps `image`/`gallery` to API URLs (avoids base64 in RSC payload), renders `<PageHeading>` and `<ProjectsGallery />`
+  - `ProjectsPage()` — Calls `getAllProjects()` + `getAllTechTags()`, maps `image`/`gallery` to API URLs (avoids base64 in RSC payload), renders `<PageHeading>` and `<ProjectsGallery projects={clientProjects} allTech={techTags} />`
 - **Exports:**
+  - `dynamic = 'force-dynamic'` — Disables static generation to avoid oversized RSC payload
   - `metadata` — Title "Projects — Sukhjot", description "A selection of full-stack projects..."
 
 ### `app/projects/[slug]/page.tsx`
 - **Purpose:** Dynamic project detail page. Uses `[slug]` route segment to render a single project. Server-rendered on demand (`dynamic = 'force-dynamic'`) to avoid oversized base64 images in static HTML.
 - **Functions:**
   - `generateMetadata({ params })` — Generates dynamic metadata (title = `${project.title} — Sukhjot`, description = project.blurb); returns "Project not found" if slug is invalid
-  - `ProjectPage({ params })` — Awaits `params.slug`, looks up project via API, calls `notFound()` if missing, gets next project, replaces base64 images with API URLs, renders `<ProjectDetail />`
+  - `ProjectPage({ params })` — Awaits `params.slug`, looks up project via `getProjectBySlug()` (lib helper, not the API route), calls `notFound()` if missing, gets next project via `getNextProject()` (falls back to current project), replaces base64 images with API URLs, renders `<ProjectDetail />`
 - **Exports:**
   - `dynamic = 'force-dynamic'` — Disables static generation to avoid oversized RSC payload
 
@@ -193,7 +206,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - Scroll listener (`useEffect`) that toggles `scrolled` state at 50px threshold
     - Desktop nav links (Home, Projects, About, Testimonials, Contact) with active state via `layoutId="nav-underline"`
     - Mobile hamburger menu (`Menu`/`X` icons) with `AnimatePresence` animated dropdown
-    - Auto-closes mobile menu on route change (`useEffect` watching `pathname`)
+    - Auto-closes mobile menu on route change via render-phase `prevPathname` state comparison (no effect — avoids cascading re-render)
     - Helper: `isActive(href)` — returns `true` if current path matches the link's href
   - **State:** `scrolled` (boolean), `open` (boolean for mobile menu)
 
@@ -223,6 +236,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - Mouse parallax effect offsetting nodes by cursor position
     - `resize()` — Recalculates dimensions and node count on window resize
     - `draw()` — Animation loop: clears canvas, updates positions, bounces off edges, draws lines and dots
+    - `onMove(e)` — Tracks mouse position (normalized) for parallax offset
     - Radial gradient overlay and glow blur backdrop
     - **Internal Types:** `Node` — `{ x, y, vx, vy }`
   - **State:** `canvasRef`, `wrapRef`, `mouse` (useRef)
@@ -265,7 +279,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `components/about/` — About Feature
 
 ### `components/about/about-content.tsx`
-- **Purpose:** Full About page content — bio, portrait, timeline, and skills grid. Timeline and skills data is sourced from Sukhjot's resume.
+- **Purpose:** Full About page content — bio, portrait, timeline, and skills grid. Timeline and skills data is sourced from Sukhjot's resume. Uses HTML entities (`&apos;`, `&amp;`) for lint-clean apostrophes/ampersands.
 - **Functions:**
   - `AboutContent()` — Renders:
     - Animated heading "About me" with gold accent
@@ -286,7 +300,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `components/contact/` — Contact Feature
 
 ### `components/contact/contact-form.tsx`
-- **Purpose:** Contact form with name/email/message inputs, submit states, and social links.
+- **Purpose:** Contact form with name/email/message inputs, submit states, and social links. Uses HTML entities (`&apos;`) for lint-clean apostrophes.
 - **Functions:**
   - `ContactForm()` — Renders:
     - Form with animated staggered fields (Name, Email, Message/textarea)
@@ -345,15 +359,14 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - "Next Project" section — link to next project card with hover effects
 
 ### `components/projects/projects-gallery.tsx`
-- **Purpose:** Filterable project gallery with tech tag filters and animated grid. Fetches from MongoDB API.
+- **Purpose:** Filterable project gallery with tech tag filters and animated grid. Pure presentational client component — data is passed in as props from the server page (no fetching).
 - **Functions:**
-  - `ProjectsGallery()` — Fetches from `/api/projects`, renders:
-    - Filter buttons ("All" + all unique tech tags extracted from fetched projects)
+  - `ProjectsGallery({ projects, allTech })` — Renders:
+    - Filter buttons ("All" + `allTech` prop)
     - Filtered project grid with `AnimatePresence`, `mode="popLayout"` for animated add/remove
     - Active filter state management
     - Staggered entrance animations per column
-    - Loading state while fetching
-  - **State:** `active` — current filter value (default `"All"`), `projects` (fetched data), `loading`
+  - **State:** `active` — current filter value (default `"All"`); `projects`/`allTech` are props (not fetched)
 
 ---
 
@@ -398,9 +411,12 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `lib/models.ts`
 - **Purpose:** Mongoose model definitions for all collections.
 - **Exports:**
-  - `Project` (Mongoose model) — Schema: `slug` (unique), `title`, `blurb`, `description[]`, `role`, `date`, `tech[]`, `image` (Base64 string), `gallery[]` (Base64 strings), `demo`, `github`, `featured`, `order` (for sorting)
-  - `Testimonial` (Mongoose model) — Schema: `name`, `role`, `quote`, `avatar` (Base64 string), `order` (for sorting)
-  - `ContactMessage` (Mongoose model) — Schema: `name`, `email`, `message`, `createdAt` (auto timestamp)
+  - `IProject` (interface) / `ProjectDoc` (type) — Project document shape
+  - `Project` (Mongoose model) — Schema: `slug` (unique), `title`, `blurb`, `description[]`, `role`, `date`, `tech[]`, `image` (Base64 string), `gallery[]` (Base64 strings), `demo`, `github`, `featured`, `order` (for sorting); `timestamps: true`
+  - `ITestimonial` (interface) / `TestimonialDoc` (type) — Testimonial document shape
+  - `Testimonial` (Mongoose model) — Schema: `name`, `role`, `quote`, `avatar` (Base64 string), `order` (for sorting); `timestamps: true`
+  - `IContactMessage` (interface) / `ContactMessageDoc` (type) — Contact message shape
+  - `ContactMessage` (Mongoose model) — Schema: `name`, `email`, `message`, `createdAt` (auto timestamp); `timestamps: true`
 
 ### `lib/types.ts`
 - **Purpose:** Shared TypeScript type definitions. No server-side imports — safe for client components.
@@ -418,6 +434,22 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `getProjectBySlug(slug)` — Fetches a single project by slug. Result is serialized.
   - `getNextProject(slug)` — Fetches the next project based on `createdAt` (older project, wraps around to newest). Result is serialized.
   - `getAllTechTags()` — Returns sorted array of unique tech tags across all projects
+
+---
+
+## Environment Variables
+
+| Variable | Purpose | Referenced in |
+|---|---|---|
+| `MONGODB_URI` | MongoDB connection string (required; throws if unset) | `lib/mongodb.ts` (via `connectDB()`, used by all API routes + `lib/projects.ts`) |
+| `BREVO_API_KEY` | Brevo SMTP API key; if unset, email notification is skipped | `app/api/contact/route.ts` (`sendBrevoEmail`) |
+| `BREVO_SENDER_EMAIL` | Sender email (default `sukhjotsingh441@gmail.com`) | `app/api/contact/route.ts` |
+| `BREVO_SENDER_NAME` | Sender name (default `Portfolio Contact`) | `app/api/contact/route.ts` |
+| `BREVO_TO_EMAIL` | Notification recipient (default `sukhjotsingh441@gmail.com`) | `app/api/contact/route.ts` |
+| `BREVO_TO_NAME` | Recipient name (default `Sukhjot`) | `app/api/contact/route.ts` |
+| `NODE_ENV` | Gates `<Analytics />` to production only | `app/layout.tsx` |
+
+> Local overrides live in `.env*.local` (git-ignored per `.gitignore`).
 
 ---
 
