@@ -30,6 +30,7 @@ export function ProjectDetail({
         transition={{ duration: 0.7, ease: EASE }}
         className="relative mt-6 aspect-[16/9] overflow-hidden rounded-3xl border border-border"
       >
+        {/* eslint-disable-next-line @next/next/no-img-element -- images.unoptimized is set; API-served DB images get no benefit from next/image */}
         <img
           src={project.image || '/placeholder.svg'}
           alt={project.title}
@@ -130,6 +131,7 @@ export function ProjectDetail({
             variants={reveal}
             className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border"
           >
+            {/* eslint-disable-next-line @next/next/no-img-element -- images.unoptimized is set; API-served DB images get no benefit from next/image */}
             <img
               src={src || '/placeholder.svg'}
               alt={`${project.title} screenshot ${i + 1}`}

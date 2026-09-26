@@ -28,15 +28,31 @@ async function sendBrevoEmail({
     return
   }
 
+  // Escape visitor input before interpolating into HTML — the message body
+  // is attacker-controlled and would otherwise allow HTML injection into
+  // the notification email.
+  const esc = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  const safeName = esc(name)
+  const safeEmail = esc(email)
+  const safeMessage = esc(message)
+  // Strip line breaks so the name can't inject extra email headers
+  const subjectName = name.replace(/[\r\n]+/g, ' ').slice(0, 100)
+
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#d4a853">New Contact Form Message</h2>
       <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:8px 0;font-weight:600;color:#555">Name</td><td style="padding:8px 0">${name}</td></tr>
-        <tr><td style="padding:8px 0;font-weight:600;color:#555">Email</td><td style="padding:8px 0"><a href="mailto:${email}">${email}</a></td></tr>
+        <tr><td style="padding:8px 0;font-weight:600;color:#555">Name</td><td style="padding:8px 0">${safeName}</td></tr>
+        <tr><td style="padding:8px 0;font-weight:600;color:#555">Email</td><td style="padding:8px 0"><a href="mailto:${safeEmail}">${safeEmail}</a></td></tr>
       </table>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0" />
-      <p style="color:#333;line-height:1.6;white-space:pre-wrap">${message}</p>
+      <p style="color:#333;line-height:1.6;white-space:pre-wrap">${safeMessage}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:16px 0" />
       <p style="font-size:12px;color:#999">Sent from your portfolio contact form.</p>
     </div>
@@ -52,7 +68,7 @@ async function sendBrevoEmail({
     body: JSON.stringify({
       sender: { name: senderName, email: senderEmail },
       to: [{ email: toEmail, name: toName }],
-      subject: `New portfolio message from ${name}`,
+      subject: `New portfolio message from ${subjectName}`,
       htmlContent: html,
       replyTo: { email, name },
     }),
@@ -76,6 +92,16 @@ export async function POST(request: Request) {
     if (!body.name || !body.email || !body.message) {
       return NextResponse.json(
         { error: 'Name, email, and message are required' },
+        { status: 400 },
+      )
+    }
+
+    if (
+      typeof body.email !== 'string' ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)
+    ) {
+      return NextResponse.json(
+        { error: 'A valid email address is required' },
         { status: 400 },
       )
     }

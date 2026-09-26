@@ -20,7 +20,7 @@ export async function GET(
     const project = {
       ...doc,
       image: `/api/projects/${slug}/image`,
-      gallery: (doc.gallery as string[]).map((_, i) =>
+      gallery: ((doc.gallery || []) as string[]).map((_, i) =>
         `/api/projects/${slug}/gallery/${i}`,
       ),
     }

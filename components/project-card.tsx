@@ -45,6 +45,7 @@ export function ProjectCard({ project }: { project: ProjectData }) {
       className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card transition-colors duration-[250ms] hover:border-gold/50"
     >
       <div className="relative aspect-[16/10] overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element -- images.unoptimized is set; API-served DB images get no benefit from next/image */}
         <img
           src={project.image || '/placeholder.svg'}
           alt={project.title}
@@ -94,6 +95,7 @@ export function FeaturedCard({ project }: { project: ProjectData }) {
     >
       <div className="grid md:grid-cols-2">
         <div className="relative aspect-[16/11] overflow-hidden md:aspect-auto">
+          {/* eslint-disable-next-line @next/next/no-img-element -- images.unoptimized is set; API-served DB images get no benefit from next/image */}
           <img
             src={project.image || '/placeholder.svg'}
             alt={project.title}

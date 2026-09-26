@@ -4,19 +4,15 @@ import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
   Braces,
-  Cloud,
-  Container,
   Database,
   GitBranch,
   Layout,
   Server,
   TerminalSquare,
   Cpu,
-  Boxes,
 } from 'lucide-react'
 import { Reveal } from '@/components/reveal'
 import {
-  reveal,
   revealLeft,
   revealRight,
   stagger,
@@ -125,7 +121,7 @@ export function AboutContent() {
           className="space-y-5 text-lg leading-relaxed text-muted-foreground"
         >
           <p>
-            I'm Sukhjot — a full-stack developer who cares as much about the
+            I&apos;m Sukhjot — a full-stack developer who cares as much about the
             resilience of a distributed system as I do about the curve of a
             button on hover.
           </p>
@@ -136,7 +132,7 @@ export function AboutContent() {
             product.
           </p>
           <p>
-            When I'm not building, I&apos;m usually tinkering with new tech,
+            When I&apos;m not building, I&apos;m usually tinkering with new tech,
             mentoring fellow developers, or exploring the outdoors around Ontario.
           </p>
         </motion.div>

@@ -153,7 +153,7 @@ export function ContactForm() {
               animate={{ opacity: 1 }}
               className="mt-3 text-sm text-gold"
             >
-              Thanks — I'll get back to you within a day or two.
+              Thanks — I&apos;ll get back to you within a day or two.
             </motion.p>
           )}
         </motion.div>
@@ -161,7 +161,7 @@ export function ContactForm() {
 
       <div className="space-y-6">
         <p className="text-pretty leading-relaxed text-muted-foreground">
-          Prefer something more direct? Reach out on any of these and I'll
+          Prefer something more direct? Reach out on any of these and I&apos;ll
           respond as soon as I can.
         </p>
         <motion.div

@@ -1,7 +1,7 @@
 # Architecture - Portfolio Website (v0portfolio-website)
 
 > This document describes every file in the portfolio project, its purpose, and the functions it contains.
-> Last updated: 2026-07-17 (base64 images replaced with API routes, Brevo email notifications, social links updated, about page placeholders filled)
+> Last updated: 2026-09-26 (audit: eslint wired up + config added, gallery-undefined crash fix, contact HTML-escape + email validation, navbar render-pattern close, img lint suppressions)
 
 ## Project Overview
 
@@ -30,7 +30,12 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `tailwindcss` ^4.2.0, `@tailwindcss/postcss` ^4.2.0
   - `typescript` 5.7.3, `@types/node` ^24, `@types/react` ^19, `@types/react-dom` ^19
   - `postcss` ^8.5
+  - `eslint` ^9, `eslint-config-next` 16.2.6 (added 2026-09-26 — the `lint` script was broken: binary + config missing)
 - **Overrides:** `hono` pinned to 4.12.25
+
+### `eslint.config.mjs`
+- **Purpose:** ESLint flat config (added 2026-09-26 — was missing, breaking `npm run lint`). Next core-web-vitals + TypeScript rules; ignores `.next/`, `out/`, `build/`, `next-env.d.ts`.
+- **Note:** DB-served images use plain `<img>` with per-line disables (`images.unoptimized: true` makes `next/image` pointless for them).
 
 ### `next.config.mjs`
 - **Purpose:** Next.js configuration.
@@ -140,13 +145,13 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `app/api/projects/route.ts`
 - **Purpose:** API route for projects (GET all, POST new). Replaces base64 images with API URLs in response.
 - **Functions:**
-  - `GET()` — Fetches all projects from MongoDB, returns sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter. Maps base64 `image`/`gallery` to API URLs.
+  - `GET()` — Fetches all projects from MongoDB, returns sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter. Maps base64 `image`/`gallery` to API URLs (missing gallery defaults to `[]` — 2026-09-26 fix for whole-list 500s).
   - `POST(request)` — Creates a new project from JSON body, saves to MongoDB, returns created project.
 
 ### `app/api/projects/[slug]/route.ts`
 - **Purpose:** API route for single project operations (GET, PUT, DELETE by slug). Replaces base64 images with API URLs in response.
 - **Functions:**
-  - `GET(request, { params })` — Fetches a single project by slug, maps base64 images to API URLs
+  - `GET(request, { params })` — Fetches a single project by slug, maps base64 images to API URLs (missing gallery defaults to `[]`)
   - `PUT(request, { params })` — Updates a project by slug with partial body
   - `DELETE(request, { params })` — Deletes a project by slug
 
@@ -169,8 +174,8 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `app/api/contact/route.ts`
 - **Purpose:** API route for contact message submissions (POST new). Saves to MongoDB and sends Brevo email notification.
 - **Functions:**
-  - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if API key is not set.
-  - `POST(request)` — Validates name/email/message, saves to MongoDB, awaits `sendBrevoEmail()` before returning
+  - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if API key is not set. HTML-escapes visitor input and strips line breaks from the subject (injection hardening, 2026-09-26).
+  - `POST(request)` — Validates name/message present + email format, saves to MongoDB, awaits `sendBrevoEmail()` before returning
 
 ### `app/api/contact/messages/route.ts`
 - **Purpose:** API route to read contact messages (used by admin).

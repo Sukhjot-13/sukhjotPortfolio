@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const projects = docs.map((p) => ({
       ...p,
       image: `/api/projects/${p.slug}/image`,
-      gallery: (p.gallery as string[]).map((_, i) =>
+      gallery: ((p.gallery || []) as string[]).map((_, i) =>
         `/api/projects/${p.slug}/gallery/${i}`,
       ),
     }))
