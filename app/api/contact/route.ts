@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { ContactMessage } from '@/lib/models'
+import { escapeHtml, isNonEmptyString, isValidEmail } from '@/lib/validate'
 
 async function sendBrevoEmail({
   name,
@@ -31,16 +32,9 @@ async function sendBrevoEmail({
   // Escape visitor input before interpolating into HTML — the message body
   // is attacker-controlled and would otherwise allow HTML injection into
   // the notification email.
-  const esc = (s: string) =>
-    s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
-  const safeName = esc(name)
-  const safeEmail = esc(email)
-  const safeMessage = esc(message)
+  const safeName = escapeHtml(name)
+  const safeEmail = escapeHtml(email)
+  const safeMessage = escapeHtml(message)
   // Strip line breaks so the name can't inject extra email headers
   const subjectName = name.replace(/[\r\n]+/g, ' ').slice(0, 100)
 
@@ -89,19 +83,9 @@ export async function POST(request: Request) {
     await connectDB()
     const body = await request.json()
 
-    if (!body.name || !body.email || !body.message) {
+    if (!isNonEmptyString(body.name) || !isNonEmptyString(body.message) || !isValidEmail(body.email)) {
       return NextResponse.json(
-        { error: 'Name, email, and message are required' },
-        { status: 400 },
-      )
-    }
-
-    if (
-      typeof body.email !== 'string' ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)
-    ) {
-      return NextResponse.json(
-        { error: 'A valid email address is required' },
+        { error: 'Name, a valid email, and message are required' },
         { status: 400 },
       )
     }

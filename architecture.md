@@ -32,6 +32,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `typescript` 5.7.3, `@types/node` ^24, `@types/react` ^19, `@types/react-dom` ^19
   - `postcss` ^8.5
   - `eslint` ^9, `eslint-config-next` 16.2.6 (added 2026-09-26 — the `lint` script was broken: binary + config missing)
+  - `vitest` (added 2026-09-26 — first test runner; `npm test` runs `tests/`)
 - **Overrides:** `hono` pinned to 4.12.25
 
 ### `eslint.config.mjs`
@@ -402,6 +403,22 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Purpose:** General utility functions.
 - **Functions:**
   - `cn(...inputs)` — Merges Tailwind class names using `clsx` + `tailwind-merge`. Takes variadic `ClassValue[]`, returns a deduplicated/merged string
+
+### `lib/validate.ts` (2026-09-26)
+- **Purpose:** Shared pure input validation (unit-tested, no DB/env). Used by the contact API route.
+- **Functions:**
+  - `isNonEmptyString(value)` — Type guard for blank-free strings.
+  - `isValidEmail(value)` — Type guard for well-formed email addresses.
+  - `escapeHtml(value)` — Escapes `& < > " '` for HTML email interpolation.
+
+### `tests/validate.test.ts` (2026-09-26)
+- **Purpose:** Vitest suite (6 tests) for `lib/validate.ts` + `cn()`. Run via `npm test`.
+
+### `docs/suggestions.md` (2026-09-26)
+- **Purpose:** First suggestions log for this repo (thin test coverage noted).
+
+### `docs/to-do.md` (2026-09-26)
+- **Purpose:** First task list (DB-backed API tests; architecture.md location decision).
 
 ### `lib/mongodb.ts`
 - **Purpose:** MongoDB connection utility. Manages a cached connection to avoid multiple connections during development.
