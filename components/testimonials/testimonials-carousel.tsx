@@ -11,18 +11,33 @@ import type { TestimonialData } from '@/lib/types'
 export function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState<TestimonialData[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const [index, setIndex] = useState(0)
   const count = testimonials.length
 
   useEffect(() => {
+    let cancelled = false
     fetch('/api/testimonials')
-      .then((r) => r.json())
-      .then((data: TestimonialData[]) => {
-        setTestimonials(data)
+      .then((r) => {
+        if (!r.ok) throw new Error(`status ${r.status}`)
+        return r.json()
       })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+      .then((data: TestimonialData[]) => {
+        if (cancelled) return
+        setTestimonials(Array.isArray(data) ? data : [])
+      })
+      .catch((err) => {
+        console.error('Failed to load testimonials:', err)
+        if (!cancelled) setError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
 
   const go = useCallback(
     (dir: number) => setIndex((i) => (i + dir + count) % count),
@@ -43,10 +58,29 @@ export function TestimonialsCarousel() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="mt-14 text-center text-muted-foreground">
+        <p>Couldn&apos;t load testimonials. Please try again.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false)
+            setLoading(true)
+            setAttempt((a) => a + 1)
+          }}
+          className="mt-4 inline-flex items-center rounded-full border border-border px-5 py-2 text-sm font-medium transition-colors hover:border-gold hover:text-gold"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
   if (count === 0) {
     return (
       <div className="mt-14 text-center text-muted-foreground">
-        No testimonials yet. Add some from the admin panel.
+        No testimonials have been published yet.
       </div>
     )
   }
@@ -120,9 +154,9 @@ export function TestimonialsCarousel() {
           </button>
 
           <div className="flex items-center gap-2">
-            {testimonials.map((_, i) => (
+            {testimonials.map((t, i) => (
               <button
-                key={i}
+                key={t._id ?? i}
                 type="button"
                 onClick={() => setIndex(i)}
                 aria-label={`Go to testimonial ${i + 1}`}

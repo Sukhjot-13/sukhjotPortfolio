@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -39,6 +39,26 @@ export function Navbar() {
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
+
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const first = panelRef.current?.querySelector<HTMLAnchorElement>('a')
+    first?.focus()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      toggleRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open])
 
   return (
     <header
@@ -88,11 +108,13 @@ export function Navbar() {
         </ul>
 
         <button
+          ref={toggleRef}
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="flex size-10 items-center justify-center rounded-md text-foreground md:hidden"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
+          aria-controls="mobile-menu"
         >
           {open ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
@@ -101,6 +123,8 @@ export function Navbar() {
       <AnimatePresence>
         {open && (
           <motion.div
+            id="mobile-menu"
+            ref={panelRef}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}

@@ -1,8 +1,28 @@
 # Architecture - Portfolio Website (v0portfolio-website)
 
 > This document describes every file in the portfolio project, its purpose, and the functions it contains.
-> Last updated: 2026-09-26 (audit: navbar render-close fix, projects-gallery props-driven fix, projects/page dynamic+techTags fix, slug page lib-helper fix, mongoose v9 fix, env-vars section added, missing-file entries added)
-> NOTE (location deviation): AGENTS.md requires `docs/architecture.md`, but this repo keeps `architecture.md` at the repo ROOT. Kept at root per instruction — not moved. `docs/suggestions.md` / `docs/to-do.md` do not exist in this repo.
+> Last updated: 2026-09-28 (security + bug + a11y audit: removed unauthenticated PII dump and unauthenticated write routes, added contact rate limit / honeypot / length caps, real TypeScript check enabled, error boundaries, keyboard-accessible project cards, contact form a11y, moved to `docs/architecture.md` per AGENTS.md)
+> Location: this file now lives in `docs/` per AGENTS.md. `README.md`-style and `AGENTS.md`-style policy docs stay at the repo root.
+
+---
+
+## API Surface Summary (read this first)
+
+This is a **public static portfolio**. There is no login system, no user accounts, and no admin panel in this repo (the sibling `adminsukhjotportfolio` repo is the content-management panel).
+
+| Route | Methods | Auth | Notes |
+|---|---|---|---|
+| `/api/projects` | `GET` | none (public read) | Optional `?tech=` filter. Returns base64 images replaced with API URLs. |
+| `/api/projects/[slug]` | `GET` | none (public read) | Single project. |
+| `/api/projects/[slug]/image` | `GET` | none (public read) | Serves stored image bytes. |
+| `/api/projects/[slug]/gallery/[index]` | `GET` | none (public read) | Serves stored gallery image bytes. |
+| `/api/testimonials` | `GET` | none (public read) | Sorted by `order`. |
+| `/api/contact` | `POST` | none (intentionally public) | Rate-limited + honeypot + length caps. Persists to Mongo, best-effort Brevo email. |
+| `/api/contact/messages` | **removed 2026-09-28** | — | Was an unauthenticated full PII dump with no consumer in this repo. |
+
+**Removed mutating handlers (2026-09-28):** `POST /api/projects`, `PUT /api/projects/[slug]`, `DELETE /api/projects/[slug]`, `POST /api/testimonials`. All four were unauthenticated content-write endpoints (including a hard delete with no confirmation, soft delete, or audit) and nothing in this repo called them. Write-path helpers (`pick`, `hasDollarKey`, `isValidExternalUrl`, `PROJECT_WRITE_FIELDS`, `TESTIMONIAL_WRITE_FIELDS`) remain in `lib/validate.ts`, are unit-tested, and are the documented contract any future gated write route must use.
+
+**No admin token exists.** `ADMIN_API_TOKEN` was deliberately **not** added: there is no gated route left to protect, so an unused secret would be dead config. If a write route is ever reintroduced, it must read the server-side `ADMIN_API_TOKEN` env var (never a `NEXT_PUBLIC_` var) and compare it with `crypto.timingSafeEqual` on equal-length buffers.
 
 ## Project Overview
 
@@ -16,7 +36,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Purpose:** Project metadata, scripts, and dependency declarations.
 - **Fields:**
   - `name: "my-project"`, `version: "0.1.0"`, `private: true`
-  - `scripts`: `dev` (next dev), `build` (next build), `start` (next start), `lint` (eslint .)
+  - `scripts`: `dev` (next dev), `build` (next build), `start` (next start), `lint` (eslint .), `typecheck` (tsc --noEmit, added 2026-09-28), `test` (vitest run)
 - **Key Dependencies:**
   - `next` 16.2.6, `react` ^19, `react-dom` ^19
   - `framer-motion` ^12.42.2 — animations
@@ -42,8 +62,9 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `next.config.mjs`
 - **Purpose:** Next.js configuration.
 - **Config:**
-  - `typescript.ignoreBuildErrors: true` — allows build to succeed despite TS errors
+  - `typescript.ignoreBuildErrors: false` — **changed 2026-09-28** (was `true`, which masked a real `IProject.createdAt` type error and let it reach production). Type errors now fail the build.
   - `images.unoptimized: true` — disables Next.js image optimization
+  - `allowedDevOrigins` — **env-driven as of 2026-09-28**. The previously hardcoded LAN IP (`192.168.2.37`) was removed; the key is only emitted when `ALLOWED_DEV_ORIGINS` is set to a non-empty comma-separated list, so no machine-specific address is committed.
 
 ### `tsconfig.json`
 - **Purpose:** TypeScript compiler configuration.
@@ -67,19 +88,30 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 
 ### `.gitignore`
 - **Purpose:** Git ignore rules.
-- **Ignores:** v0 sandbox files (`__v0_*`, `.snowflake/`, `.v0-trash/`, `.vercel/`), `.env*.local`, `node_modules`, `.next/`, `.DS_Store`
+- **Ignores:** v0 sandbox files (`__v0_*`, `.snowflake/`, `.v0-trash/`, `.vercel/`), `node_modules`, `.next/`, `.DS_Store`, `tsconfig.tsbuildinfo`
+- **Env files (hardened 2026-09-28):** pattern changed from `.env*.local` to `.env*` with a `!.env.example` negation. The old pattern left `.env` and `.env.production` committable even though both are valid Next.js load targets holding `MONGODB_URI` / `BREVO_API_KEY`.
+
+### `.env.example`
+- **Purpose:** Committed template listing every env var (kept committable via the `!.env.example` negation above).
+- **Content:** `MONGODB_URI`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME`, `ALLOWED_DEV_ORIGINS`. No functions.
 
 ### `next-env.d.ts`
 - **Purpose:** Next.js TypeScript declarations (auto-generated).
 - **Content:** References Next.js types, imports routes types.
 
 ### `AGENTS.md`
-- **Purpose:** Repo-local AI agent guidelines (architecture-docs conventions, testing, permission standards).
-- **Content:** No functions — policy doc. Requires `docs/architecture.md` + env-vars section (this repo deviates: uses root `architecture.md`).
+- **Purpose:** Repo-local AI agent guidelines (architecture-docs conventions, testing, permission standards). Stays at the repo root.
+- **Content:** No functions — policy doc. Requires `docs/architecture.md` + env-vars section (now satisfied; this file is at `docs/architecture.md`).
 
-### `architecture.md` (this file)
-- **Purpose:** Always-current file/function inventory + env vars (root location — see deviation note at top).
+### `docs/architecture.md` (this file)
+- **Purpose:** Always-current file/function inventory + env vars + API surface table. Moved from the repo root to `docs/` on 2026-09-28 per AGENTS.md.
 - **Content:** No functions — documentation.
+
+### `docs/suggestions.md`
+- **Purpose:** Dated log of open improvements, features, and vulnerabilities. No functions.
+
+### `docs/to-do.md`
+- **Purpose:** Dated task list / session handoff. No functions.
 
 ### `package-lock.json`
 - **Purpose:** Locked dependency tree (npm). No functions.
@@ -152,22 +184,41 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Exports:**
   - `metadata` — Title "Testimonials — Sukhjot", description "What colleagues and clients say..."
 
+### `app/not-found.tsx` (added 2026-09-28)
+- **Purpose:** App-wide 404 boundary. Previously a missing project or route produced the default Next error screen.
+- **Functions:**
+  - `NotFound()` — Server component rendering a "404 / Page not found" heading and a "Back to home" `<Link>`.
+
+### `app/global-error.tsx` (added 2026-09-28)
+- **Purpose:** Last-resort error boundary for root-layout-level failures (replaces its own `<html>`/`<body>`, so it uses inline styles rather than Tailwind classes).
+- **Functions:**
+  - `GlobalError({ error, reset })` — Logs the error in a `useEffect`, renders a minimal "Something broke" page with a `reset()` retry button. Inline styles only.
+
+### `app/projects/error.tsx` (added 2026-09-28)
+- **Purpose:** Route-segment error boundary for `/projects` and `/projects/[slug]`. Both pages are `force-dynamic` and call `connectDB()` during render, so a Mongo outage or missing `MONGODB_URI` previously hard-500'd the page with the default Next error screen.
+- **Functions:**
+  - `ProjectsError({ error, reset })` — Logs the error in a `useEffect`, renders a friendly heading plus a "Try again" button wired to `reset()`.
+
+### `app/projects/loading.tsx` (added 2026-09-28)
+- **Purpose:** Route-segment loading state for `/projects`, shown while the server component awaits Mongo.
+- **Functions:**
+  - `ProjectsLoading()` — Renders a centered gold spinner inside the page's max-width/padding shell.
+
 ---
 
 ## `app/api/` — API Routes (MongoDB)
 
 ### `app/api/projects/route.ts`
-- **Purpose:** API route for projects (GET all, POST new). Replaces base64 images with API URLs in response.
+- **Purpose:** Public read-only API route for projects. Replaces base64 images with API URLs in the response.
 - **Functions:**
-  - `GET()` — Fetches all projects from MongoDB, returns sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter. Maps base64 `image`/`gallery` to API URLs (missing gallery defaults to `[]` — 2026-09-26 fix for whole-list 500s).
-  - `POST(request)` — Creates a new project from JSON body, saves to MongoDB, returns created project.
+  - `GET(request)` — Fetches all projects from MongoDB, sorted by `createdAt` descending (newest first). Applies optional `?tech=` filter. Maps base64 `image`/`gallery` to API URLs (missing gallery defaults to `[]`).
+- **Removed 2026-09-28:** `POST(request)` — it passed the raw request JSON straight into `Project.create(body)` with no authentication, so any anonymous visitor could create projects and mass-assign `featured`, `order`, `_id`, `createdAt`, or top-level `$`-operators. Nothing in this repo called it. A future write route must use `pick(body, PROJECT_WRITE_FIELDS)`, force `featured`/`order` server-side, and reject `$`-prefixed keys.
 
 ### `app/api/projects/[slug]/route.ts`
-- **Purpose:** API route for single project operations (GET, PUT, DELETE by slug). Replaces base64 images with API URLs in response.
+- **Purpose:** Public read-only API route for a single project by slug. Replaces base64 images with API URLs in the response.
 - **Functions:**
   - `GET(request, { params })` — Fetches a single project by slug, maps base64 images to API URLs (missing gallery defaults to `[]`)
-  - `PUT(request, { params })` — Updates a project by slug with partial body
-  - `DELETE(request, { params })` — Deletes a project by slug
+- **Removed 2026-09-28:** `PUT(request, { params })` (raw body into `findOneAndUpdate({ slug }, body, ...)`, unauthenticated) and `DELETE(request, { params })` (permanent hard delete, unauthenticated, no confirmation, no soft delete, no audit trail). Neither had a consumer in this repo.
 
 ### `app/api/projects/[slug]/image/route.ts`
 - **Purpose:** Serves a project's main image from MongoDB base64 data as a binary response.
@@ -180,21 +231,27 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `GET(request, { params })` — Looks up project by slug and gallery index, parses base64, returns image with proper Content-Type and long-lived cache headers
 
 ### `app/api/testimonials/route.ts`
-- **Purpose:** API route for testimonials (GET all, POST new).
+- **Purpose:** Public read-only API route for testimonials.
 - **Functions:**
-  - `GET()` — Fetches all testimonials from MongoDB, sorted by order field
-  - `POST(request)` — Creates a new testimonial from JSON body
+  - `GET()` — Fetches all testimonials from MongoDB, sorted by `order`
+- **Removed 2026-09-28:** `POST(request)` — unauthenticated, passed the raw body into `Testimonial.create(body)` (mass assignment incl. `order` / `_id` / `createdAt` and `$`-operators), and had no consumer in this repo.
 
 ### `app/api/contact/route.ts`
 - **Purpose:** API route for contact message submissions (POST new). Saves to MongoDB and sends Brevo email notification.
 - **Functions:**
-  - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if API key is not set. HTML-escapes visitor input and strips line breaks from the subject (injection hardening, 2026-09-26).
-  - `POST(request)` — Validates name/message present + email format, saves to MongoDB, awaits `sendBrevoEmail()` before returning
+  - `sendBrevoEmail({ name, email, message })` — Sends transactional email via Brevo API with contact form details. Reads `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME` from env vars. Gracefully skips if the API key is not set. HTML-escapes visitor input before interpolating into the HTML body, and strips line breaks from the email subject so the name cannot inject extra mail headers.
+  - `POST(request)` — Order of operations (hardened 2026-09-28):
+    1. `checkRateLimit(clientIp(request.headers))` → `429` with `Retry-After` when the per-IP budget (5/hour) is exhausted. Runs before any DB or network work.
+    2. Parse JSON; `400` on malformed body.
+    3. `hasDollarKey(body)` → `400` (rejects Mongo update-operator keys).
+    4. `isHoneypotTripped(body)` → returns `201 { ok: true }` **without persisting or emailing**, so a bot cannot detect the trap.
+    5. Validates name/message non-empty + email format → `400`; then `exceedsAnyLimit(body, CONTACT_FIELD_LIMITS)` (`name` ≤ 120, `email` ≤ 254, `message` ≤ 5000) → `400`.
+    6. `connectDB()` + `ContactMessage.create({ name, email, message })` with an explicit field projection (no mass assignment).
+    7. `sendBrevoEmail()` in its **own** inner `try/catch` that only logs. Previously a Brevo network failure shared the outer `try` with the persist, so an outage returned `500 "Failed to send message"` after the document was already committed — prompting a retry and duplicate rows, and hiding a real notification outage. The route now returns `201` once the document is persisted.
 
-### `app/api/contact/messages/route.ts`
-- **Purpose:** API route to read contact messages (used by admin).
-- **Functions:**
-  - `GET()` — Fetches all contact messages from MongoDB, sorted by newest first
+### `app/api/contact/messages/route.ts` — DELETED 2026-09-28
+- **Purpose (former):** read contact messages. The previous architecture entry claimed it was "used by admin". That was wrong on two counts: no admin panel exists in this repo, and the route had **zero authentication**, so `curl /api/contact/messages` returned every submitted name, email, free-text message, and timestamp as full JSON.
+- **Action:** route file deleted (directory removed). A repo-wide grep found zero consumers — no component, script, page, or doc reference outside the route's own error log line. Deleting the exposure is strictly better than guarding it. There is no replacement in this repo; the sibling `adminsukhjotportfolio` panel reads its own data source.
 
 ---
 
@@ -210,6 +267,11 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - Auto-closes mobile menu on route change via render-phase `prevPathname` state comparison (no effect — avoids cascading re-render)
     - Helper: `isActive(href)` — returns `true` if current path matches the link's href
   - **State:** `scrolled` (boolean), `open` (boolean for mobile menu)
+  - **Refs (a11y, added 2026-09-28):** `toggleRef` (the hamburger button), `panelRef` (the mobile panel)
+  - **Mobile-menu keyboard behaviour (added 2026-09-28):**
+    - `useEffect([open])` moves focus to the first anchor inside the panel when it opens (previously focus stayed stranded on the trigger).
+    - `useEffect([open])` adds a document `keydown` listener for `Escape` that closes the menu and returns focus to the toggle button (previously the panel could not be dismissed from the keyboard).
+    - Toggle button has `aria-expanded` and `aria-controls="mobile-menu"`; the panel carries `id="mobile-menu"`.
 
 ### `components/footer.tsx`
 - **Purpose:** Site footer with branding, tagline, and social links. Brand name displays "Sukhjot" without a dot.
@@ -253,9 +315,9 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `ProjectCard({ project })` — Renders a card with:
     - 3D tilt via `useMotionValue`/`useSpring`/`useTransform` (rotateX/rotateY based on mouse position within card)
     - Image (API-served URL), title, blurb, tech tags
-    - Arrow icon, navigation to `/projects/${slug}` on click
-    - Gold glow border and `inset` shadow on hover
+    - Arrow icon, gold glow border and `inset` shadow on hover
     - Helper: `handleMove(e)` — updates motion values, `handleLeave()` — resets motion values
+    - **Keyboard access rewritten 2026-09-28:** the card is no longer a `motion.div` with `onClick={() => router.push(...)}` + `cursor-pointer` (no `role`, no `tabIndex`, no `onKeyDown`, so the entire projects grid was unreachable by keyboard and invisible to screen readers — the only real anchor was `sr-only` with `tabIndex={-1}`). `useRouter` and the click handler are gone; the card content is now wrapped in a single `next/link` `<Link href={/projects/${slug}}>` with a `focus-visible` ring, and the old `sr-only` duplicate anchor was removed.
   - `FeaturedCard({ project })` — Renders a larger side-by-side card for featured projects:
     - Image on left, content on right (desktop) / stacked (mobile)
     - Featured label with date, title, blurb, tech tags, "View project" link
@@ -301,13 +363,15 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `components/contact/` — Contact Feature
 
 ### `components/contact/contact-form.tsx`
-- **Purpose:** Contact form with name/email/message inputs, submit states, and social links. Uses HTML entities (`&apos;`) for lint-clean apostrophes.
+- **Purpose:** Public contact form with name/email/message inputs, client-side validation, submit states, honeypot, and social links.
 - **Functions:**
   - `ContactForm()` — Renders:
-    - Form with animated staggered fields (Name, Email, Message/textarea)
+    - Form with animated staggered fields (Name, Email, Message/textarea), each with `maxLength` from `CONTACT_FIELD_LIMITS` and `id`/`htmlFor` label association
+    - Honeypot field (added 2026-09-28): visually-hidden container (`sr-only` + `aria-hidden`) holding `<input name="website" tabIndex={-1} autoComplete="off">`. The value is submitted but never read client-side — the server silently returns `201` without doing any work.
     - `GoldButton` submit with 3 states: `idle` ("Send Message" + Send icon), `loading` ("Sending" + Loader2 spinner), `success` ("Message Sent" + Check icon + thank-you message)
-    - `handleSubmit(e)` — Prevents default, POSTs form data to `/api/contact`, handles loading/success states
-  - **State:** `status` — `"idle" | "loading" | "success"`
+    - `handleSubmit(e)` — Prevents default, runs client validation (name non-blank, email pattern, message non-blank) into per-field `errors`, then POSTs `{ name, email, message, website }` to `/api/contact` and surfaces the server's message (including the `429` copy)
+  - **State:** `status` — `"idle" | "loading" | "success"`; `errors` — per-field inline messages; `formError` — form-level message. A `useEffect` resets `status` from `success` back to `idle` after 6s.
+  - **A11y (2026-09-28):** the blocking `alert()` on failure is replaced by a rendered `<p role="alert">`; the success message is `<p role="status" aria-live="polite">`; per-field errors render inline under each control and are wired via `aria-invalid` / `aria-describedby`; the form has `noValidate` so this component's own validation runs; every `<label>` is associated via `id`/`htmlFor`.
   - **Data:** `fields[]` (name, email), `socials[]` (GitHub: Sukhjot-13, LinkedIn: sukhjot-singh-691b99167, Email: sukhjotsingh441@gmail.com) — sidebar with animated links
 
 ---
@@ -333,6 +397,8 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - Up to 2 featured projects (filtered by `project.featured`) rendered as `FeaturedCard`
     - "See All Projects" outline button → "/projects"
     - Staggered scroll-reveal for project list (loading state while fetching)
+  - **Error vs empty (2026-09-28):** the fetch now checks `r.ok`, tracks a separate `error` state, and only calls `setError(true)` on a thrown request/parse failure. Previously `.catch(console.error).finally(...)` collapsed an API `500` into the same branch as an empty collection, so visitors saw "No featured projects yet. **Add some from the admin panel.**" — copy that referenced a panel which does not exist in this repo. On error the section now renders "Couldn't load projects right now. Please try again." with a **Retry** button that bumps `attempt` and re-fetches; the genuine empty state reads "No featured projects yet. Check back soon."
+  - **State:** `projects`, `loading`, `error`, `attempt` (retry counter; the effect depends on it)
 
 ### `components/home/about-teaser.tsx`
 - **Purpose:** About teaser section on the homepage — portrait + CTA to about page.
@@ -347,7 +413,8 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `components/projects/` — Project Features
 
 ### `components/projects/project-detail.tsx`
-- **Purpose:** Full project detail view — hero image, metadata, description, gallery, CTAs, and next project navigation. Demo/Code buttons only render when the respective link exists (project.demo / project.github is non-empty). Uses `<img>` tags for API-served image URLs.
+- **Purpose:** Full project detail view — hero image, metadata, description, gallery, CTAs, and next project navigation. Both the metadata "Links" row and the CTA buttons only render when the respective link exists. Uses `<img>` tags for API-served image URLs.
+- **Link guards (2026-09-28):** the metadata `Demo` / `Code` anchors were rendered unconditionally, so a project with no links produced two `href=""` anchors that reload the current page. They are now wrapped in truthiness checks matching the existing `GoldButtonLink` guards at the bottom of the component. Values are additionally constrained to `^https?://` at write time via `isValidExternalUrl` in `lib/validate.ts`.
 - **Functions:**
   - `ProjectDetail({ project, next })` — Renders:
     - "Back to Projects" link with arrow
@@ -383,7 +450,10 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
     - Auto-rotation every 5 seconds via `setInterval`
     - Helper: `go(dir)` — moves index forward/backward wrapping around
     - Loading state while fetching
-  - **State:** `index` — current testimonial index, `testimonials` (fetched data), `loading`
+  - **State:** `index` — current testimonial index, `testimonials` (fetched data), `loading`, `error`, `attempt` (retry counter)
+  - **Error vs empty (2026-09-28):** mirrors `FeaturedSection` — `r.ok` is checked and a separate `error` state is tracked, so an API `500` no longer renders as if the collection were empty. On error: "Couldn't load testimonials. Please try again." plus a **Retry** button. The old empty-state copy "No testimonials yet. Add some from the admin panel." was wrong (no admin panel exists in this repo) and is now "No testimonials have been published yet."
+  - **Dot keys (2026-09-28):** indicators key on `testimonial._id` (falling back to the index) instead of the array index alone.
+  - `TestimonialData` gained an optional `_id?: string` in `lib/types.ts` to support stable keys.
 
 ---
 
@@ -404,21 +474,37 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Functions:**
   - `cn(...inputs)` — Merges Tailwind class names using `clsx` + `tailwind-merge`. Takes variadic `ClassValue[]`, returns a deduplicated/merged string
 
-### `lib/validate.ts` (2026-09-26)
-- **Purpose:** Shared pure input validation (unit-tested, no DB/env). Used by the contact API route.
+### `lib/validate.ts` (2026-09-26, extended 2026-09-28)
+- **Purpose:** Shared pure input validation (unit-tested, no DB/env access). Used by the contact API route and the contact form; client mirrors the same limits.
+- **Constants:**
+  - `CONTACT_FIELD_LIMITS` — `{ name: 120, email: 254, message: 5000 }` hard caps enforced before `ContactMessage.create()` and mirrored as HTML `maxLength`.
+  - `PROJECT_WRITE_FIELDS` — allow-list: `slug`, `title`, `blurb`, `description`, `role`, `date`, `tech`, `image`, `gallery`, `demo`, `github`.
+  - `TESTIMONIAL_WRITE_FIELDS` — allow-list: `name`, `role`, `quote`, `avatar`.
 - **Functions:**
   - `isNonEmptyString(value)` — Type guard for blank-free strings.
   - `isValidEmail(value)` — Type guard for well-formed email addresses.
   - `escapeHtml(value)` — Escapes `& < > " '` for HTML email interpolation.
+  - `isHoneypotTripped(body)` — True only when the hidden `website` field has non-blank content.
+  - `isWithinLimit(value, max)` — Length-cap type guard.
+  - `exceedsAnyLimit(body, limits)` — True when any capped string field is over its limit.
+  - `hasDollarKey(value)` — True when any top-level key starts with `$`; Mongoose passes these through as atomic update operators (`$unset`, `$rename`, …).
+  - `pick(source, fields)` — Allow-list projection; drops everything not listed (`_id`, `createdAt`, `updatedAt`, `featured`, `order`, `$`-keys).
+  - `isValidExternalUrl(value)` — True for absolute `http(s)` URLs, empty string, or `undefined`/`null`; rejects `javascript:`, protocol-relative `//host`, and relative paths.
+  - `hasInvalidProjectUrl(body)` — True when either `demo` or `github` fails the above.
+- **Usage note:** `pick` / `hasDollarKey` / `PROJECT_WRITE_FIELDS` / `TESTIMONIAL_WRITE_FIELDS` currently have no in-repo caller because the unauthenticated write handlers were removed on 2026-09-28. They are the documented contract for any future write route and are covered by unit tests.
 
-### `tests/validate.test.ts` (2026-09-26)
-- **Purpose:** Vitest suite (6 tests) for `lib/validate.ts` + `cn()`. Run via `npm test`.
+### `lib/rate-limit.ts` (2026-09-28)
+- **Purpose:** In-memory per-key rate limiter for the public contact form. Unit-testable — every function takes an injectable `now` and the store can be reset.
+- **Exports:**
+  - `RATE_LIMIT_DEFAULTS` — `{ limit: 5, windowMs: 60 * 60 * 1000 }` (5 submissions/hour per IP).
+  - `checkRateLimit(key, { limit?, windowMs?, now? })` — Returns `{ allowed, remaining, retryAfterSeconds }`. Creates a fresh bucket when none exists or the previous window expired, otherwise increments the counter and denies once `count >= limit`.
+  - `resetRateLimiter()` — Clears all buckets and the sweep timestamp (used by tests).
+  - `clientIp(headers)` — Best-effort client IP from `x-forwarded-for` (first entry), then `x-real-ip`, then `cf-connecting-ip`, then `'unknown'` (a shared bucket for clients with no proxy headers).
+  - Internal `sweep(now, windowMs)` — Periodic cleanup: evicts expired buckets, but at most once per window to avoid an O(n) sweep on every request.
+- **Limitation (documented, not a defect):** process-local. A serverless cold start or a second instance gets a fresh window, so this is abuse friction, not a hard quota. A distributed deployment should back this with Redis or an equivalent shared store.
 
-### `docs/suggestions.md` (2026-09-26)
-- **Purpose:** First suggestions log for this repo (thin test coverage noted).
-
-### `docs/to-do.md` (2026-09-26)
-- **Purpose:** First task list (DB-backed API tests; architecture.md location decision).
+### `tests/validate.test.ts` (2026-09-26, extended 2026-09-28)
+- **Purpose:** The single vitest suite for the repo, run by `npm test`. Covers `lib/validate.ts`, `lib/rate-limit.ts`, and `cn()`. 25 tests total (was 6).
 
 ### `lib/mongodb.ts`
 - **Purpose:** MongoDB connection utility. Manages a cached connection to avoid multiple connections during development.
@@ -428,7 +514,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ### `lib/models.ts`
 - **Purpose:** Mongoose model definitions for all collections.
 - **Exports:**
-  - `IProject` (interface) / `ProjectDoc` (type) — Project document shape
+  - `IProject` (interface) / `ProjectDoc` (type) — Project document shape. **Fixed 2026-09-28:** now declares `createdAt?: Date` and `updatedAt?: Date`, which Mongoose supplies via `timestamps: true`. Their absence caused the real `lib/projects.ts` TS2339 error that `next.config.mjs` had been masking.
   - `Project` (Mongoose model) — Schema: `slug` (unique), `title`, `blurb`, `description[]`, `role`, `date`, `tech[]`, `image` (Base64 string), `gallery[]` (Base64 strings), `demo`, `github`, `featured`, `order` (for sorting); `timestamps: true`
   - `ITestimonial` (interface) / `TestimonialDoc` (type) — Testimonial document shape
   - `Testimonial` (Mongoose model) — Schema: `name`, `role`, `quote`, `avatar` (Base64 string), `order` (for sorting); `timestamps: true`
@@ -439,7 +525,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Purpose:** Shared TypeScript type definitions. No server-side imports — safe for client components.
 - **Exports:**
   - `ProjectData` (interface) — Project shape: `slug`, `title`, `blurb`, `description[]`, `role`, `date`, `tech[]`, `image` (Base64), `gallery[]` (Base64), `demo`, `github`, `featured`, `order`
-  - `TestimonialData` (interface) — Testimonial shape: `name`, `role`, `quote`, `avatar` (Base64), `order`
+  - `TestimonialData` (interface) — Testimonial shape: `_id?` (added 2026-09-28 for stable carousel dot keys), `name`, `role`, `quote`, `avatar` (Base64), `order`
   - `ContactMessageData` (interface) — Message shape: `_id`, `name`, `email`, `message`, `createdAt`
 
 ### `lib/projects.ts`
@@ -465,8 +551,11 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 | `BREVO_TO_EMAIL` | Notification recipient (default `sukhjotsingh441@gmail.com`) | `app/api/contact/route.ts` |
 | `BREVO_TO_NAME` | Recipient name (default `Sukhjot`) | `app/api/contact/route.ts` |
 | `NODE_ENV` | Gates `<Analytics />` to production only | `app/layout.tsx` |
+| `ALLOWED_DEV_ORIGINS` | **Added 2026-09-28.** Comma-separated extra origins Next.js may serve during dev. Replaces a hardcoded LAN IP in `next.config.mjs`. When unset, the `allowedDevOrigins` key is omitted entirely. | `next.config.mjs` |
 
-> Local overrides live in `.env*.local` (git-ignored per `.gitignore`).
+> No `ADMIN_API_TOKEN` is defined, because no route in this repo requires authentication. The contact API is intentionally public.
+>
+> `.gitignore` now ignores `.env*` with a `!.env.example` negation, so all Next.js load targets (`.env`, `.env.local`, `.env.production`) stay uncommitted while the template is tracked. Template contents: see `.env.example`.
 
 ---
 

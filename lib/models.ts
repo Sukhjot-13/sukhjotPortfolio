@@ -17,6 +17,9 @@ export interface IProject {
   github: string
   featured: boolean
   order: number
+  /** Managed by Mongoose `timestamps: true` */
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export type ProjectDoc = IProject & Document

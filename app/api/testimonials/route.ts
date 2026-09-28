@@ -15,18 +15,3 @@ export async function GET() {
     )
   }
 }
-
-export async function POST(request: Request) {
-  try {
-    await connectDB()
-    const body = await request.json()
-    const testimonial = await Testimonial.create(body)
-    return NextResponse.json(testimonial, { status: 201 })
-  } catch (error) {
-    console.error('POST /api/testimonials error:', error)
-    return NextResponse.json(
-      { error: 'Failed to create testimonial' },
-      { status: 500 },
-    )
-  }
-}

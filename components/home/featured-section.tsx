@@ -12,16 +12,33 @@ import type { ProjectData } from '@/lib/types'
 export function FeaturedSection() {
   const [projects, setProjects] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     fetch('/api/projects')
-      .then((r) => r.json())
-      .then((data: ProjectData[]) => {
-        setProjects(data.filter((p) => p.featured).slice(0, 2))
+      .then((r) => {
+        if (!r.ok) throw new Error(`status ${r.status}`)
+        return r.json()
       })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+      .then((data: ProjectData[]) => {
+        if (cancelled) return
+        setProjects(
+          (Array.isArray(data) ? data : []).filter((p) => p.featured).slice(0, 2),
+        )
+      })
+      .catch((err) => {
+        console.error('Failed to load featured projects:', err)
+        if (!cancelled) setError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-24 md:px-8 md:py-32">
@@ -38,6 +55,21 @@ export function FeaturedSection() {
         <div className="mt-12 flex items-center justify-center py-20">
           <div className="size-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
         </div>
+      ) : error ? (
+        <div className="mt-12 text-center text-muted-foreground">
+          <p>Couldn&apos;t load projects right now. Please try again.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setError(false)
+              setLoading(true)
+              setAttempt((a) => a + 1)
+            }}
+            className="mt-4 inline-flex items-center rounded-full border border-border px-5 py-2 text-sm font-medium transition-colors hover:border-gold hover:text-gold"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <motion.div
           variants={stagger(0.15)}
@@ -48,7 +80,7 @@ export function FeaturedSection() {
         >
           {projects.length === 0 && (
             <p className="text-center text-muted-foreground">
-              No featured projects yet. Add some from the admin panel.
+              No featured projects yet. Check back soon.
             </p>
           )}
           {projects.map((project) => (

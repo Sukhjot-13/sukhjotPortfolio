@@ -19,6 +19,7 @@ export interface ProjectData {
 }
 
 export interface TestimonialData {
+  _id?: string
   name: string
   role: string
   quote: string

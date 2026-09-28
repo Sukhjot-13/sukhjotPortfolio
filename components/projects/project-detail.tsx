@@ -65,22 +65,26 @@ export function ProjectDetail({
               Links
             </dt>
             <dd className="mt-1 flex gap-3 text-foreground">
-              <a
-                href={project.demo}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-gold"
-              >
-                Demo
-              </a>
-              <a
-                href={project.github}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-gold"
-              >
-                Code
-              </a>
+              {project.demo ? (
+                <a
+                  href={project.demo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-gold"
+                >
+                  Demo
+                </a>
+              ) : null}
+              {project.github ? (
+                <a
+                  href={project.github}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-gold"
+                >
+                  Code
+                </a>
+              ) : null}
             </dd>
           </div>
         </dl>

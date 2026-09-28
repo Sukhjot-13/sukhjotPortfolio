@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { ContactMessage } from '@/lib/models'
-import { escapeHtml, isNonEmptyString, isValidEmail } from '@/lib/validate'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
+import {
+  CONTACT_FIELD_LIMITS,
+  escapeHtml,
+  exceedsAnyLimit,
+  hasDollarKey,
+  isHoneypotTripped,
+  isNonEmptyString,
+  isValidEmail,
+} from '@/lib/validate'
 
 async function sendBrevoEmail({
   name,
@@ -79,29 +88,70 @@ async function sendBrevoEmail({
 }
 
 export async function POST(request: Request) {
-  try {
-    await connectDB()
-    const body = await request.json()
+  const rate = checkRateLimit(clientIp(request.headers))
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many messages sent. Please try again later.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rate.retryAfterSeconds) },
+      },
+    )
+  }
 
-    if (!isNonEmptyString(body.name) || !isNonEmptyString(body.message) || !isValidEmail(body.email)) {
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  if (hasDollarKey(body)) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  // Honeypot tripped — respond as if it succeeded so the bot learns nothing.
+  if (isHoneypotTripped(body)) {
+    return NextResponse.json({ ok: true }, { status: 201 })
+  }
+
+  try {
+    if (
+      !isNonEmptyString(body.name) ||
+      !isNonEmptyString(body.message) ||
+      !isValidEmail(body.email)
+    ) {
       return NextResponse.json(
         { error: 'Name, a valid email, and message are required' },
         { status: 400 },
       )
     }
 
+    if (exceedsAnyLimit(body, CONTACT_FIELD_LIMITS)) {
+      return NextResponse.json(
+        { error: 'One or more fields are too long' },
+        { status: 400 },
+      )
+    }
+
+    await connectDB()
     const message = await ContactMessage.create({
       name: body.name,
       email: body.email,
       message: body.message,
     })
 
-    // Send email notification — await so Vercel doesn't kill the request
-    await sendBrevoEmail({
-      name: body.name,
-      email: body.email,
-      message: body.message,
-    })
+    // Notification is best-effort: the message is already persisted, so a
+    // Brevo outage must not turn into a 500 and a duplicate retry.
+    try {
+      await sendBrevoEmail({
+        name: body.name,
+        email: body.email,
+        message: body.message,
+      })
+    } catch (emailError) {
+      console.error('POST /api/contact email notification error:', emailError)
+    }
 
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
