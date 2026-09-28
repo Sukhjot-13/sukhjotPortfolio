@@ -1,4 +1,5 @@
 import { Analytics } from '@vercel/analytics/next'
+import ManagerProvider from '@/lib/manager/ManagerProvider'
 import type { Metadata, Viewport } from 'next'
 import { Space_Grotesk, Inter, JetBrains_Mono } from 'next/font/google'
 import { Navbar } from '@/components/navbar'
@@ -47,6 +48,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="font-sans antialiased">
+        <ManagerProvider />
         <Navbar />
         <main className="min-h-screen">{children}</main>
         <Footer />

@@ -13,11 +13,11 @@ This is a **public static portfolio**. There is no login system, no user account
 | Route | Methods | Auth | Notes |
 |---|---|---|---|
 | `/api/projects` | `GET` | none (public read) | Optional `?tech=` filter. Returns base64 images replaced with API URLs. |
-| `/api/projects/[slug]` | `GET` | none (public read) | Single project. |
+| `/api/projects/[slug]` | `GET` | none (public read) | Single project. 2026-09-28: a 404 now calls `logServerEvent('project_not_found')` and a 500 calls `logServerError('project_fetch_failed')` (Manager, optional). |
 | `/api/projects/[slug]/image` | `GET` | none (public read) | Serves stored image bytes. |
 | `/api/projects/[slug]/gallery/[index]` | `GET` | none (public read) | Serves stored gallery image bytes. |
-| `/api/testimonials` | `GET` | none (public read) | Sorted by `order`. |
-| `/api/contact` | `POST` | none (intentionally public) | Rate-limited + honeypot + length caps. Persists to Mongo, best-effort Brevo email. |
+| `/api/testimonials` | `GET` | none (public read) | Sorted by `order`. 2026-09-28: a 500 also calls `logServerError('testimonials_fetch_failed')` (Manager, optional). |
+| `/api/contact` | `POST` | none (intentionally public) | Rate-limited + honeypot + length caps. Persists to Mongo, best-effort Brevo email. 2026-09-28: the 500 and the Brevo-notification failure now also call `logServerError` (Manager, optional). |
 | `/api/contact/messages` | **removed 2026-09-28** | — | Was an unauthenticated full PII dump with no consumer in this repo. |
 
 **Removed mutating handlers (2026-09-28):** `POST /api/projects`, `PUT /api/projects/[slug]`, `DELETE /api/projects/[slug]`, `POST /api/testimonials`. All four were unauthenticated content-write endpoints (including a hard delete with no confirmation, soft delete, or audit) and nothing in this repo called them. Write-path helpers (`pick`, `hasDollarKey`, `isValidExternalUrl`, `PROJECT_WRITE_FIELDS`, `TESTIMONIAL_WRITE_FIELDS`) remain in `lib/validate.ts`, are unit-tested, and are the documented contract any future gated write route must use.
@@ -93,7 +93,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 
 ### `.env.example`
 - **Purpose:** Committed template listing every env var (kept committable via the `!.env.example` negation above).
-- **Content:** `MONGODB_URI`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME`, `ALLOWED_DEV_ORIGINS`. No functions.
+- **Content:** `MONGODB_URI`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME`, `ALLOWED_DEV_ORIGINS`, plus the optional **Manager** block (`MANAGER_ENDPOINT`, `MANAGER_APP_ID`, `MANAGER_LOG_KEY`, `MANAGER_ANALYTICS_KEY`, `MANAGER_LOG_SOURCE`, and the four `NEXT_PUBLIC_MANAGER_*` values) added 2026-09-28. Every key line is blank — no credential value is ever committed. No functions.
 
 ### `next-env.d.ts`
 - **Purpose:** Next.js TypeScript declarations (auto-generated).
@@ -121,9 +121,9 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 ## `app/` — Pages & Layout
 
 ### `app/layout.tsx`
-- **Purpose:** Root layout wrapping all pages. Sets up fonts, metadata, Navbar, Footer, and Vercel Analytics.
+- **Purpose:** Root layout wrapping all pages. Sets up fonts, metadata, Navbar, Footer, Vercel Analytics, and (2026-09-28) the optional `<ManagerProvider />`.
 - **Functions:**
-  - `RootLayout({ children })` — Wraps children with `<html>`, font class variables (`Inter` for sans, `Space_Grotesk` for display, `JetBrains_Mono` for mono), dark background, `<Navbar>`, `<main>`, `<Footer>`, and `<Analytics />` in production
+  - `RootLayout({ children })` — Wraps children with `<html>`, font class variables (`Inter` for sans, `Space_Grotesk` for display, `JetBrains_Mono` for mono), dark background, `<ManagerProvider />` (2026-09-28, renders `null`, starts the Manager browser logger + analytics tag when configured), `<Navbar>`, `<main>`, `<Footer>`, and `<Analytics />` in production
 - **Exports:**
   - `metadata` — Page title "Sukhjot — Full-Stack Developer", description, `generator: "v0.app"`
   - `viewport` — `colorScheme: "dark"`, `themeColor: "#111111"`
@@ -540,6 +540,59 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 
 ---
 
+## `lib/manager/` — Manager Integration (added 2026-09-28, OPTIONAL)
+
+Centralized logging + analytics. **Entirely optional**: with no `MANAGER_*` variables the whole
+thing is a set of no-ops, so local dev, CI and previews are unaffected. This app has no logging
+layer of its own, so the facade is the single entry point — the three API routes call
+`logServerEvent`/`logServerError` directly, next to the `console.error` they already emitted. Full
+contract in `README.md` § "Manager integration".
+
+| File | Purpose | Exports |
+|---|---|---|
+| `lib/manager/logger.ts` | The vendored `@manager/logger` SDK: one file, zero dependencies, types included. Refreshed with `curl -H "x-manager-key: …" "…/api/sdk/logger?format=ts"`. Do not hand-edit. | `initLogger`, `traceIdFromHeaders`, `shutdownLoggers`, `fingerprint`, `LOG_SDK_VERSION`, `LOG_SDK_PATH`, `TRACE_HEADER` |
+| `lib/manager/index.ts` | The integration facade. Reads the server `MANAGER_*` block into `managerConfig` and — separately, and this is the point — the `NEXT_PUBLIC_MANAGER_*` block into `managerClientConfig` using **static** `process.env.NEXT_PUBLIC_*` member expressions, because Next.js strips non-public env from the client bundle. Exposes a no-op logger when unconfigured, creates the real logger lazily on first use and caches it on `globalThis`, batches routine levels on a 250ms window and leading-edge-flushes `error`/`fatal`. Never throws. | `managerConfig`, `managerClientConfig`, `startManagerLogger`, `getManagerLogger`, `managerLog`, `getManagerDroppedCount`, `logServerEvent`, `logServerError`, `managerTrackerScript` |
+| `lib/manager/ManagerProvider.tsx` | `'use client'` component mounted in `app/layout.tsx`. Starts the browser logger and injects the analytics `<script>` once, guarded against double injection. Gated on `managerClientConfig.enabled`, **not** `managerConfig.enabled`. | `ManagerProvider` (default) |
+
+**Delivery profile.** Routine levels ride the SDK's own 250ms `flushIntervalMs` window, so a burst
+of N lines becomes one HTTP request rather than N. `error`/`fatal` skip the window via
+`scheduleUrgentFlush` (leading edge): flush now if `URGENT_FLUSH_MIN_GAP_MS` (100ms) has passed,
+otherwise arm a single trailing flush — a burst of 50 errors costs ~2 requests, not 50. Measured
+with `node scripts/measure-log-delivery.mjs 200`: **201/200 entries delivered, 0 dropped, 11
+requests, 18.3 entries/request at 213 logs/s**. (Flushing per entry instead measures ~96/200
+delivered with 105 dropped across 20 requests — one HTTP request per line.)
+
+**Design points.**
+- The logger is created on first use, not at boot: Next.js compiles startup hooks and route
+  handlers into separate module graphs, so a boot-created instance is not the object a request sees.
+- `captureProcessErrors` is intentionally **off** — Next.js owns process error handling, and extra
+  process listeners stop log delivery entirely.
+- The SDK import stays extensionless (`from './logger'`). Turbopack does not resolve an explicit
+  `'./logger.js'` to `logger.ts`, so that form fails the production build here;
+  `scripts/measure-log-delivery.mjs` bridges the same gap for plain Node with a
+  `module.registerHooks` resolve hook.
+
+### `scripts/` (added 2026-09-28)
+| File | Purpose |
+|---|---|
+| `scripts/check-manager-integration.mjs` | `npm run manager:check` — live check against a running Manager: the server key, the client key and the analytics key are each accepted on the right endpoint, each wrong key kind is refused (401, generic body for an unknown key), and this app's own error paths are exercised (`GET /api/projects/<missing>` → 404 and `GET /api/testimonials` → 200). Needs `MANAGER_ENDPOINT`, `MANAGER_LOG_KEY`, `MANAGER_ANALYTICS_KEY`, `APP_ORIGIN` (default `http://localhost:3602`); `MANAGER_CLIENT_KEY` optional (its check is skipped when unset). |
+| `scripts/measure-log-delivery.mjs` | `node scripts/measure-log-delivery.mjs [count]` — fires N entries at the facade the way a request handler would, counts the ingest requests that actually land, and reports latency, entries/request and SDK drops. |
+
+### `tests/manager-integration.test.js` (added 2026-09-28)
+14 vitest cases for the facade. Because the facade reads its environment at module load, every case
+re-imports it after `vi.resetModules()`. Covers: disabled-when-unconfigured no-ops across every
+entry point; server enablement; the analytics key alone never enabling logs; whitespace-only values
+treated as unconfigured; **the server block never enabling the client half**; the client half
+enabling itself from `NEXT_PUBLIC_*` alone; the tracker tag's shape; the tracker omitted without a
+client analytics key; a **static-access guard** that reads `lib/manager/index.ts` and fails if any
+`NEXT_PUBLIC_*` value stops being a literal `process.env.X` member expression (bracket notation
+fails too) or if the client block starts indexing `process.env` dynamically; `managerLog` never
+throwing at any level; info riding the 250ms window while `error` leading-edge flushes with the
+100ms floor; unknown levels falling back to `info`; `getManagerDroppedCount`; `globalThis` instance
+sharing; and the real SDK surface.
+
+---
+
 ## Environment Variables
 
 | Variable | Purpose | Referenced in |
@@ -552,7 +605,20 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 | `BREVO_TO_NAME` | Recipient name (default `Sukhjot`) | `app/api/contact/route.ts` |
 | `NODE_ENV` | Gates `<Analytics />` to production only | `app/layout.tsx` |
 | `ALLOWED_DEV_ORIGINS` | **Added 2026-09-28.** Comma-separated extra origins Next.js may serve during dev. Replaces a hardcoded LAN IP in `next.config.mjs`. When unset, the `allowedDevOrigins` key is omitted entirely. | `next.config.mjs` |
+| `MANAGER_ENDPOINT` | **Added 2026-09-28.** Base URL of the **Manager** deployment — its own port (a local Manager is `http://127.0.0.1:3300`), *not* this app's dev port. Optional; endpoint + app id + log key must all be present before the integration enables itself. | `lib/manager/index.ts` → `managerConfig` |
+| `MANAGER_APP_ID` | **Added 2026-09-28.** Project slug in Manager (`sukhjotportfolio`). Optional. | `lib/manager/index.ts` → `managerConfig` |
+| `MANAGER_LOG_KEY` | **Added 2026-09-28.** Project log key — `mlk_…` for the server. Optional; verified absent from the built client bundle. | `lib/manager/index.ts` → `managerConfig` |
+| `MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** Analytics key (`mak_…`). Optional; without it logs still work but no analytics tag is injected. | `lib/manager/index.ts` → `managerConfig.analyticsKey` |
+| `MANAGER_LOG_SOURCE` | **Added 2026-09-28.** `server` (default) or `client`. Optional. | `lib/manager/index.ts` → `SOURCE` |
+| `NEXT_PUBLIC_MANAGER_ENDPOINT` | **Added 2026-09-28.** Same value as `MANAGER_ENDPOINT`. Required for *any* browser logging or analytics, because Next.js inlines only a literal `process.env.NEXT_PUBLIC_FOO` member expression — `process.env` is an empty object in browser code and a dynamic index is not inlined, so a `'use client'` module reading `MANAGER_*` is silently dead. | `lib/manager/index.ts` → `CLIENT_ENDPOINT` |
+| `NEXT_PUBLIC_MANAGER_APP_ID` | **Added 2026-09-28.** Same value as `MANAGER_APP_ID`. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_APP_ID` |
+| `NEXT_PUBLIC_MANAGER_CLIENT_KEY` | **Added 2026-09-28.** The project's **client** key (`mck_…`), not the server key: Manager derives each entry's `source` from the key kind. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_LOG_KEY` |
+| `NEXT_PUBLIC_MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** `mak_…` analytics key. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_ANALYTICS_KEY` |
 
+> **The Manager block is entirely optional** — all nine variables default to unset, the integration is a set of no-ops, and local dev / CI / previews are unaffected. The full annotated block lives in `.env.example`; `.env.local` carries the real values and is git-ignored.
+>
+> The server half and the client half are separate on purpose. Verified against the production bundle (`npm run build`): the four `NEXT_PUBLIC_*` values appear as string literals in `.next/static/chunks/`, `MANAGER_LOG_KEY` appears nowhere in `.next/static`, and the server `env()` helper survives as a dead dynamic index (`env("MANAGER_ENDPOINT")`) the browser can never resolve — harmless, because `ManagerProvider` gates on `managerClientConfig.enabled` and never reads `managerConfig`. `tests/manager-integration.test.js` reads the facade source and fails if any of the four stops being a static member expression.
+>
 > No `ADMIN_API_TOKEN` is defined, because no route in this repo requires authentication. The contact API is intentionally public.
 >
 > `.gitignore` now ignores `.env*` with a `!.env.example` negation, so all Next.js load targets (`.env`, `.env.local`, `.env.production`) stay uncommitted while the template is tracked. Template contents: see `.env.example`.

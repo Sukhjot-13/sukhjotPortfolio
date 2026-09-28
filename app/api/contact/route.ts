@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { ContactMessage } from '@/lib/models'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
+import { logServerError } from '@/lib/manager'
 import {
   CONTACT_FIELD_LIMITS,
   escapeHtml,
@@ -151,11 +152,13 @@ export async function POST(request: Request) {
       })
     } catch (emailError) {
       console.error('POST /api/contact email notification error:', emailError)
+      logServerError('contact_notification_failed', emailError)
     }
 
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
     console.error('POST /api/contact error:', error)
+    logServerError('contact_submit_failed', error)
     return NextResponse.json(
       { error: 'Failed to send message' },
       { status: 500 },

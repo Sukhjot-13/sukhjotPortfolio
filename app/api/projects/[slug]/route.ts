@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Project } from '@/lib/models'
+import { logServerError, logServerEvent } from '@/lib/manager'
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
+  // Declared outside the try so the catch below can name the route in its log.
+  let slug = '';
   try {
-    await connectDB()
-    const { slug } = await params
+    await connectDB();
+    ({ slug } = await params);
     const doc = await Project.findOne({ slug }).lean()
     if (!doc) {
+      logServerEvent('project_not_found', { slug })
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 },
@@ -27,6 +31,7 @@ export async function GET(
     return NextResponse.json(project)
   } catch (error) {
     console.error(`GET /api/projects/[slug] error:`, error)
+    logServerError('project_fetch_failed', error, { slug })
     return NextResponse.json(
       { error: 'Failed to fetch project' },
       { status: 500 },
