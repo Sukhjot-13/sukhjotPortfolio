@@ -1,8 +1,9 @@
+import { logServerError, withManagerLogs } from '@/lib/manager'
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Project } from '@/lib/models'
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   try {
     await connectDB()
     const { searchParams } = new URL(request.url)
@@ -23,9 +24,12 @@ export async function GET(request: Request) {
     return NextResponse.json(projects)
   } catch (error) {
     console.error('GET /api/projects error:', error)
+    logServerError('portfolio_request_failed', error)
     return NextResponse.json(
       { error: 'Failed to fetch projects' },
       { status: 500 },
     )
   }
 }
+
+export const GET = withManagerLogs(handleGET)

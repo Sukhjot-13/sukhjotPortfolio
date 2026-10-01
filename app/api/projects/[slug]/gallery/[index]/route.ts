@@ -1,3 +1,4 @@
+import { logServerError, withManagerLogs } from '@/lib/manager'
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Project } from '@/lib/models'
@@ -6,7 +7,7 @@ import { Project } from '@/lib/models'
  * Serves a single gallery image for a project from the base64 data
  * stored in MongoDB.
  */
-export async function GET(
+async function handleGET(
   _request: Request,
   { params }: { params: Promise<{ slug: string; index: string }> },
 ) {
@@ -44,6 +45,9 @@ export async function GET(
     })
   } catch (error) {
     console.error('GET /api/projects/[slug]/gallery/[index] error:', error)
+    logServerError('portfolio_request_failed', error)
     return new NextResponse(null, { status: 500 })
   }
 }
+
+export const GET = withManagerLogs(handleGET)

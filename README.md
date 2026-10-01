@@ -31,27 +31,18 @@ previews are unaffected.
 
 ### What gets wired up
 
-- **Every server error path.** `/api/projects/[slug]` (both its 404 and its
-  500), `/api/testimonials` (its 500) and `/api/contact` (its 500 and the
-  Brevo-notification failure) already called `console.error`; each now also
-  calls `logServerError`/`logServerEvent` from `lib/manager/index.ts`, so the
-  same failures land in Manager with no behavioural change to the routes. This
-  app has no logger of its own, so `lib/manager/index.ts` is the single entry
-  point — no app-wide logging layer was introduced.
-- **Unhandled crashes, console warnings/errors and failed fetches in the
-  browser** are captured by the SDK.
-- **Analytics**: one script tag is injected client-side, tracking pageviews
-  (SPA routes included), click targets, referrers and UTM params.
+- Every API verb records real status/outcome under a request-local trace and schedules `after` flushing. Existing business errors retain their server stacks in Manager; requests omit query strings and submitted contact data.
+- The browser captures console warnings/errors, uncaught errors, rejected promises and failed fetches once per window. Repeated provider mounts do not duplicate listeners or uploads.
+- One analytics tag per document tracks pageviews and clicks, independently of the client log key. Missing Manager configuration or an unreachable Manager does not prevent application responses.
 
 ### Configuration
 
 | Variable | Required for | Value |
 |---|---|---|
-| `MANAGER_ENDPOINT` | logs + analytics | base URL of the **Manager** deployment — not this app's own port |
-| `MANAGER_APP_ID` | logs + analytics | project slug in Manager (`sukhjotportfolio`) |
+| `MANAGER_ENDPOINT` | server logs | base URL of the **Manager** deployment — not this app's own port |
+| `MANAGER_APP_ID` | server logs | project slug in Manager (`sukhjotportfolio`) |
 | `MANAGER_LOG_KEY` | logs | `mlk_…` (server) |
 | `MANAGER_ANALYTICS_KEY` | analytics | `mak_…` |
-| `MANAGER_LOG_SOURCE` | optional | `server` (default) or `client` |
 | `NEXT_PUBLIC_MANAGER_ENDPOINT` | browser logs + analytics | same value as `MANAGER_ENDPOINT` |
 | `NEXT_PUBLIC_MANAGER_APP_ID` | browser logs + analytics | same value as `MANAGER_APP_ID` |
 | `NEXT_PUBLIC_MANAGER_CLIENT_KEY` | browser logs | `mck_…` client key |
@@ -92,18 +83,14 @@ refreshed file so everyone on the team gets the same version.
 
 ```bash
 npm run manager:check
-# needs MANAGER_ENDPOINT, MANAGER_LOG_KEY, MANAGER_ANALYTICS_KEY
+# needs MANAGER_ENDPOINT, MANAGER_LOG_KEY, MANAGER_CLIENT_KEY, MANAGER_ANALYTICS_KEY
 # and APP_ORIGIN pointing at a running `next start`
 ```
 
-It posts one log with the server key, one with the client key and one event
-with the analytics key; asserts that each wrong key kind is refused; then hits
-this app's own `GET /api/projects/<missing>` (404) and `GET /api/testimonials`
-(200). Anything the app logs shows up under *Project → Logs* in Manager within
-a second or two.
+The checker requires exact accepted/rejected counts for each enabled key channel, verifies wrong-kind and unknown-key denials, and exercises this app's 404 and successful public reads. Set `MANAGER_READ_COOKIE` to an authorized Manager session to prove the app's completion row was stored under the incoming trace. Set `APP_ORIGIN_DEGRADED` to a second instance with an unreachable Manager to verify outage tolerance. Missing storage/outage evidence is reported as a skip.
 
 The static-access guarantee is enforced by a test, not just by convention —
-`tests/manager-integration.test.js` reads `lib/manager/index.ts` and fails if
+`tests/manager-integration.test.js` reads `lib/manager/config.ts` and fails if
 any `NEXT_PUBLIC_*` value stops being a literal member expression (bracket
 notation fails too) or if the client block ever starts indexing `process.env`.
 To see the real bundled values, build and grep `.next/static`.
@@ -123,26 +110,20 @@ of 50 errors costs ~2 requests rather than 50.
 node scripts/measure-log-delivery.mjs 200
 ```
 
-Current shape: **201/200 entries delivered, 0 dropped, 11 requests, 18.3
-entries/request** at ~213 logs/s. (Flushing per entry instead measures ~96/200
-delivered with 105 dropped across 20 requests — one HTTP request per line.)
+The standalone measurement imports pure configuration, the SDK and shared server options, then explicitly flushes before exit. Results are measurements against the configured test Manager, not production guarantees. Request delivery additionally uses `after`; background timers alone do not guarantee serverless delivery.
 
 `getManagerDroppedCount()` exposes the SDK's own discard count for health
 checks; the re-vendored SDK raises its discards as a `warn` entry named
 `manager_sdk_dropped_entries` rather than losing them, and its self-protection
 ceiling is 500/s (a 50/s cap silently discarded most of a busy server's output).
 
-## Known blocker (Manager-side, not fixable from this repo)
+## Verification
 
-The browser analytics tracker cannot currently be loaded cross-origin from
-Manager: Manager sends `Cross-Origin-Resource-Policy: same-origin` on every
-route, including `/t.js`, and that is precisely the header a browser uses to
-refuse a cross-origin `<script src>`. The tag is injected into the DOM
-correctly, but the script never executes, so no pageview is sent. Server-side
-log delivery is unaffected. Detail and a causal reproduction are in
-`docs/suggestions.md`.
+Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build` for the single suite, static checks and production output. See `docs/verification/manager-integration-2026-09-30.md` for isolated live application/browser/database checks. Public Manager values are baked into browser output; rebuild when changing them. Use the same `MONGODB_URI` as the admin app to share content.
 
 ## Documentation
 
 `docs/architecture.md` (file + function inventory, env vars) ·
 `docs/suggestions.md` (open items) · `docs/to-do.md` (session handoff)
+
+The public testimonials page is temporarily hidden: its route returns 404 and the navigation link is removed. Existing testimonial data and admin editing remain available for later publication.

@@ -30,3 +30,16 @@ _(all 2026-09-28 audit findings were fixed in the same pass; see `docs/architect
 - (2026-09-28) **FIXED — project link injection.** `project.demo` / `project.github` were rendered into `href` with no validation and no empty-string guard, producing `href=""` links that reloaded the page. Anchors now render only when non-empty, and write-time validation requires `^https?://`.
 - (2026-09-28) **FIXED — `.env` / `.env.production` were committable.** `.gitignore` ignored only `.env*.local`, leaving both valid Next.js load targets (`MONGODB_URI`, `BREVO_API_KEY`) exposed to accidental commit. Pattern is now `.env*` with `!.env.example`.
 - (2026-09-28) **OPEN — no authentication anywhere in this repo (accepted by owner).** The public site is a static portfolio and the contact form must stay open to anonymous visitors, so no login/user system was built. Content management lives in the sibling `adminsukhjotportfolio` repo. If a write route is ever reintroduced here, it must gate on a server-side `ADMIN_API_TOKEN` compared with `crypto.timingSafeEqual` on equal-length buffers (never a `NEXT_PUBLIC_` var), with unit tests for both the allow and deny paths.
+
+## 🟢 Improvements
+
+### 2026-09-30 — Manager request delivery and browser independence (implemented)
+
+Separate browser configuration from server lifecycle; wrap every API request and admin content action with request-local traces and response-completion flushing; keep analytics independent of browser logging. Prevent duplicate SDK/tracker mounts and catch synchronous urgent-flush failures. Regression tests and isolated live/browser/storage checks cover the integration.
+
+## 🟢 Verification follow-up
+
+- (2026-09-30, implemented) Refreshed the generated SDK directly from Manager. Ordinary fetch calls now propagate same-origin trace headers, capture continues during uploads, structured stacks are redacted and repeat grouping preserves later flushes and distinct traces. Regression tests and live browser/database correlation pass. The delivery script now distinguishes attempted/accepted entries and fails on rejection or drops.
+- (2026-09-30, resolved in current Manager) The historical cross-origin tracker blocker above no longer reproduces: `/t.js` permits cross-origin loading, and actual Chrome pageviews from the portfolio were accepted and stored. Standard Chrome UA was used; synthetic HeadlessChrome bot filtering is intentionally bypassed only in the test harness.
+
+- (2026-09-30, implemented at owner request) Temporarily unpublished the public testimonials page with a real 404 and removed its shared navigation link. Existing content/admin editing is retained for later restoration.

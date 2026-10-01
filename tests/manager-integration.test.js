@@ -34,7 +34,7 @@ const MANAGER_VARS = [
   'NEXT_PUBLIC_MANAGER_ANALYTICS_KEY',
 ]
 
-const FACADE = path.resolve(process.cwd(), 'lib/manager/index.ts')
+const FACADE = path.resolve(process.cwd(), 'lib/manager/config.ts')
 
 function setEnv(values) {
   for (const key of MANAGER_VARS) delete process.env[key]
@@ -44,15 +44,25 @@ function setEnv(values) {
   }
 }
 
+const sdkShutdowns = new Set()
+
 async function loadManager() {
   vi.resetModules()
   delete globalThis.__managerServerLogger
-  return import('../lib/manager/index.js')
+  const manager = await import('../lib/manager/index.js')
+  sdkShutdowns.add((await import('../lib/manager/logger.ts')).shutdownLoggers)
+  return manager
 }
 
 describe('manager integration module', () => {
-  beforeEach(() => setEnv({}))
+  beforeEach(() => {
+    setEnv({})
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ accepted: 1, rejected: 0 })))
+  })
   afterEach(() => {
+    for (const close of sdkShutdowns) close()
+    sdkShutdowns.clear()
+    vi.unstubAllGlobals()
     setEnv({})
     delete globalThis.__managerServerLogger
   })
@@ -144,10 +154,7 @@ describe('manager integration module', () => {
     ]) {
       expect(source).toContain(`process.env.${name}`)
     }
-    const clientBlock = source.slice(
-      source.indexOf('const CLIENT_ENDPOINT'),
-      source.indexOf('export const managerClientConfig'),
-    )
+    const clientBlock = source.slice(source.indexOf('export const managerClientConfig'))
     expect(clientBlock).not.toMatch(/process\.env\[/)
     expect(source).not.toMatch(/env\(['"]NEXT_PUBLIC/)
   })
@@ -180,6 +187,18 @@ describe('manager integration module', () => {
     expect(flush).toHaveBeenCalledTimes(1)
     await new Promise((resolve) => setTimeout(resolve, 150))
     expect(flush).toHaveBeenCalledTimes(2)
+  })
+
+  it('contains synchronous SDK failures from urgent trailing timers', async () => {
+    vi.useFakeTimers()
+    try {
+      setEnv(MANAGER_ENV)
+      const { managerLog } = await loadManager()
+      globalThis.__managerServerLogger = { error: vi.fn(), flush: () => { throw new Error('SDK unavailable') } }
+      expect(() => managerLog('error', 'first')).not.toThrow()
+      expect(() => managerLog('error', 'second')).not.toThrow()
+      await vi.advanceTimersByTimeAsync(150)
+    } finally { vi.useRealTimers() }
   })
 
   it('exposes the SDK drop count, and 0 when unconfigured', async () => {

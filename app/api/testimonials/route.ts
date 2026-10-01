@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Testimonial } from '@/lib/models'
-import { logServerError } from '@/lib/manager'
+import { logServerError, withManagerLogs } from '@/lib/manager'
 
-export async function GET() {
+async function handleGET() {
   try {
     await connectDB()
     const testimonials = await Testimonial.find().sort({ order: 1 }).lean()
@@ -17,3 +17,5 @@ export async function GET() {
     )
   }
 }
+
+export const GET = withManagerLogs(handleGET)

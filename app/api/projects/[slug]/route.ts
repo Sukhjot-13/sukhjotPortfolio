@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Project } from '@/lib/models'
-import { logServerError, logServerEvent } from '@/lib/manager'
+import { logServerError, logServerEvent, withManagerLogs } from '@/lib/manager'
 
-export async function GET(
+async function handleGET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -38,3 +38,5 @@ export async function GET(
     )
   }
 }
+
+export const GET = withManagerLogs(handleGET)

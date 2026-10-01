@@ -1,132 +1,51 @@
 #!/usr/bin/env node
-/**
- * Verifies the Manager integration end to end against a running Manager:
- *   1. server key accepted, client key accepted, analytics key accepted
- *   2. analytics key refused on the log endpoint and server key refused on events
- *   3. this app's own API error path (a missing project slug -> 404, logged by
- *      app/api/projects/[slug]/route.ts) lands in Manager
- *
- * Usage: node scripts/check-manager-integration.mjs
- * Env:  MANAGER_ENDPOINT, MANAGER_LOG_KEY, MANAGER_CLIENT_KEY, MANAGER_ANALYTICS_KEY,
- *       APP_ORIGIN (default http://localhost:3602)
- */
-import process from "node:process";
-
-const endpoint = (process.env.MANAGER_ENDPOINT ?? "http://127.0.0.1:3300").replace(/\/$/, "");
-const logKey = process.env.MANAGER_LOG_KEY ?? "";
-const clientKey = process.env.MANAGER_CLIENT_KEY ?? "";
-const analyticsKey = process.env.MANAGER_ANALYTICS_KEY ?? "";
-const appOrigin = (process.env.APP_ORIGIN ?? "http://localhost:3602").replace(/\/$/, "");
-
-let passed = 0;
-const failures = [];
-
-function check(name, ok, detail = "") {
-  if (ok) {
-    passed += 1;
-    process.stdout.write(`  ok  ${name}\n`);
-  } else {
-    failures.push(`${name}${detail === "" ? "" : ` — ${detail}`}`);
-    process.stdout.write(`FAIL  ${name}${detail === "" ? "" : ` — ${detail}`}\n`);
-  }
+/** Live Manager acceptance + application trace delivery. Requires running app/Manager. */
+import process from 'node:process'
+const endpoint=(process.env.MANAGER_ENDPOINT??'http://127.0.0.1:3300').replace(/\/+$/,'')
+const appOrigin=(process.env.APP_ORIGIN??'http://127.0.0.1:3602').replace(/\/+$/,'')
+const appId=process.env.MANAGER_APP_ID??'sukhjotportfolio'
+const serverKey=process.env.MANAGER_LOG_KEY??''
+const clientKey=process.env.MANAGER_CLIENT_KEY??process.env.NEXT_PUBLIC_MANAGER_CLIENT_KEY??''
+const analyticsKey=process.env.MANAGER_ANALYTICS_KEY??process.env.NEXT_PUBLIC_MANAGER_ANALYTICS_KEY??''
+const readCookie=process.env.MANAGER_READ_COOKIE??''
+const marker=`check_${Date.now().toString(36)}`
+let passed=0, skipped=0
+const failures=[]
+function check(name,condition) { console.log(`${condition?'ok':'FAIL'} ${name}`); if(condition) passed++; else failures.push(name) }
+async function post(path,key,body) {
+ const response=await fetch(endpoint+path,{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'origin':appOrigin,'user-agent':'Mozilla/5.0 Chrome/145.0.0.0 Safari/537.36'},body:JSON.stringify(path==='/api/ingest/events'&&key===analyticsKey?{...body,key}:body),signal:AbortSignal.timeout(15000)})
+ return {status:response.status,body:await response.json()}
 }
-
-if (logKey === "" || analyticsKey === "") {
-  process.stderr.write("MANAGER_LOG_KEY and MANAGER_ANALYTICS_KEY must be set\n");
-  process.exit(2);
+if(!serverKey||!clientKey||!analyticsKey) { console.error('Set server, client and analytics Manager keys.'); process.exit(2) }
+const log={logs:[{level:'info',message:marker}]}
+for(const [name,key] of [['server',serverKey],['client',clientKey]]) {
+ const result=await post('/api/ingest/logs',key,log)
+ check(`${name} key accepts exactly one log`,result.status===200&&result.body.accepted===1&&result.body.rejected===0)
 }
-
-async function post(path, body, key) {
-  const headers = { "content-type": "application/json" };
-  if (key) headers["x-api-key"] = key;
-  const response = await fetch(`${endpoint}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  const text = await response.text();
-  let parsed = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = text;
-  }
-  return { status: response.status, body: parsed };
-}
-
-const marker = `check_${Date.now()}`;
-
-process.stdout.write("1. ingest accepts the right key kinds\n");
-const serverLog = await post(
-  "/api/ingest/logs",
-  { logs: [{ level: "info", message: `${marker}_server`, meta: { source: "integration-check" } }] },
-  logKey,
-);
-check(
-  "server key posts logs",
-  serverLog.status === 200 && serverLog.body.accepted === 1,
-  JSON.stringify(serverLog.body),
-);
-
-if (clientKey !== "") {
-  const browserLog = await post(
-    "/api/ingest/logs",
-    { logs: [{ level: "info", message: `${marker}_client`, meta: { source: "integration-check" } }] },
-    clientKey,
-  );
-  check(
-    "client key posts logs",
-    browserLog.status === 200 && browserLog.body.accepted === 1,
-    JSON.stringify(browserLog.body),
-  );
-} else {
-  process.stdout.write("skip  client key posts logs (MANAGER_CLIENT_KEY unset)\n");
-}
-
-const event = await post("/api/ingest/events", {
-  key: analyticsKey,
-  events: [{ type: "pageview", path: "/integration-check" }],
-});
-check("analytics key posts events", event.status === 200 && event.body.accepted === 1, JSON.stringify(event.body));
-
-process.stdout.write("2. key kinds are enforced\n");
-const wrongEvents = await post("/api/ingest/events", { events: [{ type: "pageview", path: "/" }] }, logKey);
-check("server key cannot post events", wrongEvents.status === 401, `status ${wrongEvents.status}`);
-
-const wrongLogs = await post(
-  "/api/ingest/logs",
-  { logs: [{ level: "info", message: "nope" }] },
-  analyticsKey,
-);
-check("analytics key cannot post logs", wrongLogs.status === 401, `status ${wrongLogs.status}`);
-
-const badKey = await post(
-  "/api/ingest/logs",
-  { logs: [{ level: "info", message: "nope" }] },
-  "mlk_definitely_not_a_real_key",
-);
-check(
-  "unknown key gets a generic 401",
-  badKey.status === 401 && JSON.stringify(badKey.body) === '{"error":"unauthorized"}',
-  JSON.stringify(badKey.body),
-);
-
-process.stdout.write("3. the app's own logs reach Manager\n");
-// A missing slug hits the project_not_found branch in
-// app/api/projects/[slug]/route.ts, which calls logServerEvent through the facade.
-try {
-  const missing = await fetch(`${appOrigin}/api/projects/manager-check-missing`);
-  check("app error path responds 404", missing.status === 404, `status ${missing.status}`);
-  const testimonials = await fetch(`${appOrigin}/api/testimonials`);
-  check("app success path responds 200", testimonials.ok, `status ${testimonials.status}`);
-} catch (error) {
-  check(
-    "app responds (is `next start` running on APP_ORIGIN?)",
-    false,
-    error.message,
-  );
-}
-
-process.stdout.write(`\nmarker: ${marker} (search this in the log viewer)\n`);
-process.stdout.write(`${passed} checks passed, ${failures.length} failed\n`);
-if (failures.length > 0) process.exit(1);
+const event=await post('/api/ingest/events',analyticsKey,{events:[{type:'pageview',path:'/integration-check'}]})
+check('analytics key accepts exactly one event',event.status===200&&event.body.accepted===1&&event.body.rejected===0)
+check('analytics key cannot write logs',(await post('/api/ingest/logs',analyticsKey,log)).status===401)
+check('server key cannot write events',(await post('/api/ingest/events',serverKey,{events:[{type:'pageview',path:'/'}]})).status===401)
+const invalid=await post('/api/ingest/logs','mlk_not_a_real_key',log)
+check('unknown keys return generic 401',invalid.status===401&&invalid.body.error==='unauthorized')
+const headers={'x-trace-id':marker}
+check('missing public project returns 404',(await fetch(appOrigin+'/api/projects/manager-check-missing',{headers})).status===404)
+check('public testimonials read returns 200',(await fetch(appOrigin+'/api/testimonials',{headers})).status===200)
+if(readCookie) {
+ let rows=[]
+ for(let attempt=0;attempt<15;attempt++) {
+  const response=await fetch(`${endpoint}/api/projects/${encodeURIComponent(appId)}/logs?traceId=${encodeURIComponent(marker)}`,{headers:{cookie:readCookie},signal:AbortSignal.timeout(15000)})
+  if(!response.ok) throw new Error(`Manager log reader returned ${response.status}`)
+  rows=(await response.json()).logs??[]
+  if(rows.some((row)=>row.message==='request_completed')) break
+  await new Promise((resolve)=>setTimeout(resolve,200))
+ }
+ check('application completion persisted under the incoming browser trace',rows.some((row)=>row.message==='request_completed'&&row.source==='server'&&row.traceId===marker))
+} else { skipped++; console.log('skip stored-log verification: set MANAGER_READ_COOKIE to an authorized Manager session') }
+const degraded=(process.env.APP_ORIGIN_DEGRADED??'').replace(/\/+$/,'')
+if(degraded) {
+ const response=await fetch(degraded+'/api/testimonials',{ signal:AbortSignal.timeout(10000)})
+ check('application still answers with Manager unreachable',response.status===200)
+} else { skipped++; console.log('skip outage instance: set APP_ORIGIN_DEGRADED') }
+console.log(`${passed} passed, ${skipped} skipped, ${failures.length} failed; marker ${marker}`)
+if(failures.length) process.exit(1)

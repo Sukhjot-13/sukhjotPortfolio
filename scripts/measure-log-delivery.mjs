@@ -9,9 +9,9 @@
  * Usage: node scripts/measure-log-delivery.mjs [count]
  * Env:  MANAGER_ENDPOINT, MANAGER_LOG_KEY, MANAGER_APP_ID
  *
- * The facade is TypeScript, so Node cannot import it directly. This repo has no
+ * The standalone SDK/config are TypeScript, so Node resolves their imports explicitly. This repo has no
  * bundler dependency, so the script installs a resolve hook that appends the
- * `.ts` extension to the facade's extensionless `./logger` import, then lets
+ * `.ts` extension to extensionless SDK/config imports, then lets
  * Node's own type stripping do the transform. That also proves the extensionless
  * specifier resolves outside Turbopack.
  */
@@ -51,6 +51,8 @@ const ingestPath = `${endpoint}/api/ingest/logs`;
 
 let requests = 0;
 let entries = 0;
+let accepted = 0;
+let failedRequests = 0;
 const timings = [];
 
 const originalFetch = globalThis.fetch;
@@ -69,17 +71,29 @@ globalThis.fetch = async (input, init) => {
     const started = performance.now();
     const response = await originalFetch(input, init);
     timings.push(performance.now() - started);
+    try {
+      const result = await response.clone().json();
+      if (!response.ok || !Number.isInteger(result.accepted) || result.rejected !== 0) {
+        failedRequests += 1;
+      } else {
+        accepted += result.accepted;
+      }
+    } catch { failedRequests += 1; }
     return response;
   }
   return originalFetch(input, init);
 };
 
-const facadePath = path.resolve(import.meta.dirname, process.env.MANAGER_MODULE ?? "../lib/manager/index.ts");
-const { startManagerLogger, managerLog, getManagerDroppedCount } = await import(
-  pathToFileURL(facadePath).href
-);
-
-startManagerLogger();
+const modulePath = path.resolve(import.meta.dirname, process.env.MANAGER_MODULE ?? '../lib/manager/config.ts');
+const { managerConfig } = await import(pathToFileURL(modulePath).href);
+const { initLogger } = await import(pathToFileURL(path.join(path.dirname(modulePath), 'logger.ts')).href);
+const { FLUSH_INTERVAL_MS, REDACT_KEYS } = await import(pathToFileURL(path.join(path.dirname(modulePath), 'server-options.ts')).href);
+const log = initLogger({ endpoint: managerConfig.endpoint, appId: managerConfig.appId,
+  apiKey: managerConfig.apiKey, environment: 'measurement', captureConsole: null,
+  captureGlobalErrors: false, captureProcessErrors: false, captureFetch: false,
+  redactKeys: REDACT_KEYS, flushIntervalMs: FLUSH_INTERVAL_MS });
+const managerLog = (level, message, meta) => log[level](message, meta);
+const getManagerDroppedCount = () => log.droppedCount();
 
 // Fire in paced chunks so the SDK's self rate-limiter is not the thing under test.
 const perChunk = Number(process.env.MEASURE_CHUNK ?? 20);
@@ -96,6 +110,7 @@ for (let index = 0; index < count; index += 1) {
 const enqueueMs = performance.now() - started;
 
 await new Promise((resolve) => setTimeout(resolve, 2500));
+await log.flush();
 
 const total = timings.reduce((sum, value) => sum + value, 0);
 process.stdout.write(`project           : ${appId}\n`);
@@ -104,11 +119,16 @@ process.stdout.write(
   `enqueue time      : ${enqueueMs.toFixed(1)}ms (logging must not block the request)\n`,
 );
 process.stdout.write(`ingest requests   : ${requests}\n`);
-process.stdout.write(`entries delivered : ${entries}\n`);
+process.stdout.write(`entries attempted : ${entries}\n`);
 process.stdout.write(
   `entries/request   : ${requests === 0 ? 0 : (entries / requests).toFixed(1)}\n`,
 );
 process.stdout.write(`http time total   : ${total.toFixed(1)}ms\n`);
 process.stdout.write(`requests/1k lines : ${((requests / count) * 1000).toFixed(1)}\n`);
+process.stdout.write(`entries accepted  : ${accepted}\n`);
+process.stdout.write(`failed requests   : ${failedRequests}\n`);
 process.stdout.write(`sdk dropped       : ${getManagerDroppedCount()}\n`);
 process.stdout.write(`fired per second  : ${(count / (enqueueMs / 1000)).toFixed(0)}\n`);
+
+globalThis.fetch = originalFetch;
+if (accepted !== count || failedRequests > 0 || getManagerDroppedCount() > 0) process.exitCode = 1;

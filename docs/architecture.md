@@ -1,7 +1,7 @@
 # Architecture - Portfolio Website (v0portfolio-website)
 
 > This document describes every file in the portfolio project, its purpose, and the functions it contains.
-> Last updated: 2026-09-28 (security + bug + a11y audit: removed unauthenticated PII dump and unauthenticated write routes, added contact rate limit / honeypot / length caps, real TypeScript check enabled, error boundaries, keyboard-accessible project cards, contact form a11y, moved to `docs/architecture.md` per AGENTS.md)
+> Last updated: 2026-09-30 (security + bug + a11y audit: removed unauthenticated PII dump and unauthenticated write routes, added contact rate limit / honeypot / length caps, real TypeScript check enabled, error boundaries, keyboard-accessible project cards, contact form a11y, moved to `docs/architecture.md` per AGENTS.md)
 > Location: this file now lives in `docs/` per AGENTS.md. `README.md`-style and `AGENTS.md`-style policy docs stay at the repo root.
 
 ---
@@ -26,7 +26,7 @@ This is a **public static portfolio**. There is no login system, no user account
 
 ## Project Overview
 
-A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, Framer Motion, and shadcn/ui. Features include: animated hero background, project showcase with filtering, testimonials carousel, contact form, and scroll-reveal animations. Uses MongoDB for dynamic data (projects, testimonials, contact messages).
+A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, Framer Motion, and shadcn/ui. Features include: animated hero background, project showcase with filtering, contact form, and scroll-reveal animations. Uses MongoDB for dynamic data (projects, testimonials, contact messages).
 
 ---
 
@@ -93,7 +93,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 
 ### `.env.example`
 - **Purpose:** Committed template listing every env var (kept committable via the `!.env.example` negation above).
-- **Content:** `MONGODB_URI`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME`, `ALLOWED_DEV_ORIGINS`, plus the optional **Manager** block (`MANAGER_ENDPOINT`, `MANAGER_APP_ID`, `MANAGER_LOG_KEY`, `MANAGER_ANALYTICS_KEY`, `MANAGER_LOG_SOURCE`, and the four `NEXT_PUBLIC_MANAGER_*` values) added 2026-09-28. Every key line is blank — no credential value is ever committed. No functions.
+- **Content:** `MONGODB_URI`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, `BREVO_TO_EMAIL`, `BREVO_TO_NAME`, `ALLOWED_DEV_ORIGINS`, plus the optional **Manager** block (`MANAGER_ENDPOINT`, `MANAGER_APP_ID`, `MANAGER_LOG_KEY`, `MANAGER_ANALYTICS_KEY`, and the four `NEXT_PUBLIC_MANAGER_*` values) added 2026-09-28. Every key line is blank — no credential value is ever committed. No functions.
 
 ### `next-env.d.ts`
 - **Purpose:** Next.js TypeScript declarations (auto-generated).
@@ -178,11 +178,8 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
   - `dynamic = 'force-dynamic'` — Disables static generation to avoid oversized RSC payload
 
 ### `app/testimonials/page.tsx`
-- **Purpose:** Testimonials page route. Sets metadata and renders heading + carousel.
-- **Functions:**
-  - `TestimonialsPage()` — Renders `<PageHeading>` with eyebrow "Kind words", title "Testimonials", subtitle, and `<TestimonialsCarousel />`
-- **Exports:**
-  - `metadata` — Title "Testimonials — Sukhjot", description "What colleagues and clients say..."
+- **Purpose:** Temporarily unpublished public testimonials route.
+- **Functions:** `TestimonialsPage()` calls Next `notFound()` before rendering; direct visits return 404 without mounting the carousel. No metadata export remains.
 
 ### `app/not-found.tsx` (added 2026-09-28)
 - **Purpose:** App-wide 404 boundary. Previously a missing project or route produced the default Next error screen.
@@ -262,7 +259,7 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 - **Functions:**
   - `Navbar()` — Renders a `<header>` with:
     - Scroll listener (`useEffect`) that toggles `scrolled` state at 50px threshold
-    - Desktop nav links (Home, Projects, About, Testimonials, Contact) with active state via `layoutId="nav-underline"`
+    - Desktop nav links (Home, Projects, About, Contact) with active state via `layoutId="nav-underline"`
     - Mobile hamburger menu (`Menu`/`X` icons) with `AnimatePresence` animated dropdown
     - Auto-closes mobile menu on route change via render-phase `prevPathname` state comparison (no effect — avoids cascading re-render)
     - Helper: `isActive(href)` — returns `true` if current path matches the link's href
@@ -540,58 +537,9 @@ A modern Next.js v16 portfolio website for **Sukhjot**. Built with Next.js 16 Ap
 
 ---
 
-## `lib/manager/` — Manager Integration (added 2026-09-28, OPTIONAL)
+## Manager Integration
 
-Centralized logging + analytics. **Entirely optional**: with no `MANAGER_*` variables the whole
-thing is a set of no-ops, so local dev, CI and previews are unaffected. This app has no logging
-layer of its own, so the facade is the single entry point — the three API routes call
-`logServerEvent`/`logServerError` directly, next to the `console.error` they already emitted. Full
-contract in `README.md` § "Manager integration".
-
-| File | Purpose | Exports |
-|---|---|---|
-| `lib/manager/logger.ts` | The vendored `@manager/logger` SDK: one file, zero dependencies, types included. Refreshed with `curl -H "x-manager-key: …" "…/api/sdk/logger?format=ts"`. Do not hand-edit. | `initLogger`, `traceIdFromHeaders`, `shutdownLoggers`, `fingerprint`, `LOG_SDK_VERSION`, `LOG_SDK_PATH`, `TRACE_HEADER` |
-| `lib/manager/index.ts` | The integration facade. Reads the server `MANAGER_*` block into `managerConfig` and — separately, and this is the point — the `NEXT_PUBLIC_MANAGER_*` block into `managerClientConfig` using **static** `process.env.NEXT_PUBLIC_*` member expressions, because Next.js strips non-public env from the client bundle. Exposes a no-op logger when unconfigured, creates the real logger lazily on first use and caches it on `globalThis`, batches routine levels on a 250ms window and leading-edge-flushes `error`/`fatal`. Never throws. | `managerConfig`, `managerClientConfig`, `startManagerLogger`, `getManagerLogger`, `managerLog`, `getManagerDroppedCount`, `logServerEvent`, `logServerError`, `managerTrackerScript` |
-| `lib/manager/ManagerProvider.tsx` | `'use client'` component mounted in `app/layout.tsx`. Starts the browser logger and injects the analytics `<script>` once, guarded against double injection. Gated on `managerClientConfig.enabled`, **not** `managerConfig.enabled`. | `ManagerProvider` (default) |
-
-**Delivery profile.** Routine levels ride the SDK's own 250ms `flushIntervalMs` window, so a burst
-of N lines becomes one HTTP request rather than N. `error`/`fatal` skip the window via
-`scheduleUrgentFlush` (leading edge): flush now if `URGENT_FLUSH_MIN_GAP_MS` (100ms) has passed,
-otherwise arm a single trailing flush — a burst of 50 errors costs ~2 requests, not 50. Measured
-with `node scripts/measure-log-delivery.mjs 200`: **201/200 entries delivered, 0 dropped, 11
-requests, 18.3 entries/request at 213 logs/s**. (Flushing per entry instead measures ~96/200
-delivered with 105 dropped across 20 requests — one HTTP request per line.)
-
-**Design points.**
-- The logger is created on first use, not at boot: Next.js compiles startup hooks and route
-  handlers into separate module graphs, so a boot-created instance is not the object a request sees.
-- `captureProcessErrors` is intentionally **off** — Next.js owns process error handling, and extra
-  process listeners stop log delivery entirely.
-- The SDK import stays extensionless (`from './logger'`). Turbopack does not resolve an explicit
-  `'./logger.js'` to `logger.ts`, so that form fails the production build here;
-  `scripts/measure-log-delivery.mjs` bridges the same gap for plain Node with a
-  `module.registerHooks` resolve hook.
-
-### `scripts/` (added 2026-09-28)
-| File | Purpose |
-|---|---|
-| `scripts/check-manager-integration.mjs` | `npm run manager:check` — live check against a running Manager: the server key, the client key and the analytics key are each accepted on the right endpoint, each wrong key kind is refused (401, generic body for an unknown key), and this app's own error paths are exercised (`GET /api/projects/<missing>` → 404 and `GET /api/testimonials` → 200). Needs `MANAGER_ENDPOINT`, `MANAGER_LOG_KEY`, `MANAGER_ANALYTICS_KEY`, `APP_ORIGIN` (default `http://localhost:3602`); `MANAGER_CLIENT_KEY` optional (its check is skipped when unset). |
-| `scripts/measure-log-delivery.mjs` | `node scripts/measure-log-delivery.mjs [count]` — fires N entries at the facade the way a request handler would, counts the ingest requests that actually land, and reports latency, entries/request and SDK drops. |
-
-### `tests/manager-integration.test.js` (added 2026-09-28)
-14 vitest cases for the facade. Because the facade reads its environment at module load, every case
-re-imports it after `vi.resetModules()`. Covers: disabled-when-unconfigured no-ops across every
-entry point; server enablement; the analytics key alone never enabling logs; whitespace-only values
-treated as unconfigured; **the server block never enabling the client half**; the client half
-enabling itself from `NEXT_PUBLIC_*` alone; the tracker tag's shape; the tracker omitted without a
-client analytics key; a **static-access guard** that reads `lib/manager/index.ts` and fails if any
-`NEXT_PUBLIC_*` value stops being a literal `process.env.X` member expression (bracket notation
-fails too) or if the client block starts indexing `process.env` dynamically; `managerLog` never
-throwing at any level; info riding the 250ms window while `error` leading-edge flushes with the
-100ms floor; unknown levels falling back to `info`; `getManagerDroppedCount`; `globalThis` instance
-sharing; and the real SDK surface.
-
----
+Optional logging and analytics use the vendored `lib/manager/logger.ts` SDK (exports and private functions are inventoried below). `index.ts` is a server facade; import-free `config.ts` supplies browser configuration. Every API verb uses isolated traces and `after` delivery on successful responses, early 404/400 and uncaught errors. The provider creates one browser logger per window and one tracker tag per document, with independent log/analytics keys. Current function details follow; setup and verification are in `README.md`.
 
 ## Environment Variables
 
@@ -605,23 +553,35 @@ sharing; and the real SDK surface.
 | `BREVO_TO_NAME` | Recipient name (default `Sukhjot`) | `app/api/contact/route.ts` |
 | `NODE_ENV` | Gates `<Analytics />` to production only | `app/layout.tsx` |
 | `ALLOWED_DEV_ORIGINS` | **Added 2026-09-28.** Comma-separated extra origins Next.js may serve during dev. Replaces a hardcoded LAN IP in `next.config.mjs`. When unset, the `allowedDevOrigins` key is omitted entirely. | `next.config.mjs` |
-| `MANAGER_ENDPOINT` | **Added 2026-09-28.** Base URL of the **Manager** deployment — its own port (a local Manager is `http://127.0.0.1:3300`), *not* this app's dev port. Optional; endpoint + app id + log key must all be present before the integration enables itself. | `lib/manager/index.ts` → `managerConfig` |
-| `MANAGER_APP_ID` | **Added 2026-09-28.** Project slug in Manager (`sukhjotportfolio`). Optional. | `lib/manager/index.ts` → `managerConfig` |
-| `MANAGER_LOG_KEY` | **Added 2026-09-28.** Project log key — `mlk_…` for the server. Optional; verified absent from the built client bundle. | `lib/manager/index.ts` → `managerConfig` |
-| `MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** Analytics key (`mak_…`). Optional; without it logs still work but no analytics tag is injected. | `lib/manager/index.ts` → `managerConfig.analyticsKey` |
-| `MANAGER_LOG_SOURCE` | **Added 2026-09-28.** `server` (default) or `client`. Optional. | `lib/manager/index.ts` → `SOURCE` |
-| `NEXT_PUBLIC_MANAGER_ENDPOINT` | **Added 2026-09-28.** Same value as `MANAGER_ENDPOINT`. Required for *any* browser logging or analytics, because Next.js inlines only a literal `process.env.NEXT_PUBLIC_FOO` member expression — `process.env` is an empty object in browser code and a dynamic index is not inlined, so a `'use client'` module reading `MANAGER_*` is silently dead. | `lib/manager/index.ts` → `CLIENT_ENDPOINT` |
-| `NEXT_PUBLIC_MANAGER_APP_ID` | **Added 2026-09-28.** Same value as `MANAGER_APP_ID`. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_APP_ID` |
-| `NEXT_PUBLIC_MANAGER_CLIENT_KEY` | **Added 2026-09-28.** The project's **client** key (`mck_…`), not the server key: Manager derives each entry's `source` from the key kind. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_LOG_KEY` |
-| `NEXT_PUBLIC_MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** `mak_…` analytics key. Same inlining caveat. | `lib/manager/index.ts` → `CLIENT_ANALYTICS_KEY` |
+| `MANAGER_ENDPOINT` | **Added 2026-09-28.** Base URL of the **Manager** deployment — its own port (a local Manager is `http://127.0.0.1:3300`), *not* this app's dev port. Optional; endpoint + app id + log key must all be present before the integration enables itself. | `lib/manager/config.ts` → `managerConfig` |
+| `MANAGER_APP_ID` | **Added 2026-09-28.** Project slug in Manager (`sukhjotportfolio`). Optional. | `lib/manager/config.ts` → `managerConfig` |
+| `MANAGER_LOG_KEY` | **Added 2026-09-28.** Project log key — `mlk_…` for the server. Optional; verified absent from the built client bundle. | `lib/manager/config.ts` → `managerConfig` |
+| `MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** Optional server-side configuration/CLI compatibility value (`mak_…`); browser tracking uses NEXT_PUBLIC_MANAGER_ANALYTICS_KEY independently. | `lib/manager/config.ts` → `managerConfig.analyticsKey` |
+| `NEXT_PUBLIC_MANAGER_ENDPOINT` | **Added 2026-09-28.** Same value as `MANAGER_ENDPOINT`. Required for *any* browser logging or analytics, because Next.js inlines only a literal `process.env.NEXT_PUBLIC_FOO` member expression — `process.env` is an empty object in browser code and a dynamic index is not inlined, so a `'use client'` module reading `MANAGER_*` is silently dead. | `lib/manager/config.ts` → `managerClientConfig` |
+| `NEXT_PUBLIC_MANAGER_APP_ID` | **Added 2026-09-28.** Same value as `MANAGER_APP_ID`. Same inlining caveat. | `lib/manager/config.ts` → `managerClientConfig` |
+| `NEXT_PUBLIC_MANAGER_CLIENT_KEY` | **Added 2026-09-28.** The project's **client** key (`mck_…`), not the server key: Manager derives each entry's `source` from the key kind. Same inlining caveat. | `lib/manager/config.ts` → `managerClientConfig` |
+| `NEXT_PUBLIC_MANAGER_ANALYTICS_KEY` | **Added 2026-09-28.** `mak_…` analytics key. Same inlining caveat. | `lib/manager/config.ts` → `managerClientConfig` |
 
 > **The Manager block is entirely optional** — all nine variables default to unset, the integration is a set of no-ops, and local dev / CI / previews are unaffected. The full annotated block lives in `.env.example`; `.env.local` carries the real values and is git-ignored.
 >
-> The server half and the client half are separate on purpose. Verified against the production bundle (`npm run build`): the four `NEXT_PUBLIC_*` values appear as string literals in `.next/static/chunks/`, `MANAGER_LOG_KEY` appears nowhere in `.next/static`, and the server `env()` helper survives as a dead dynamic index (`env("MANAGER_ENDPOINT")`) the browser can never resolve — harmless, because `ManagerProvider` gates on `managerClientConfig.enabled` and never reads `managerConfig`. `tests/manager-integration.test.js` reads the facade source and fails if any of the four stops being a static member expression.
+> Server/client modules are separate. Browser output is checked for private credentials; public values use literal env member expressions.
 >
 > No `ADMIN_API_TOKEN` is defined, because no route in this repo requires authentication. The contact API is intentionally public.
 >
 > `.gitignore` now ignores `.env*` with a `!.env.example` negation, so all Next.js load targets (`.env`, `.env.local`, `.env.production`) stay uncommitted while the template is tracked. Template contents: see `.env.example`.
+
+### Standalone verification environment variables
+
+| Variable | Purpose | Reference |
+|---|---|---|
+| `MANAGER_CLIENT_KEY` | Optional CLI alias for public client key | `scripts/check-manager-integration.mjs` |
+| `APP_ORIGIN` | Running app origin to probe | `scripts/check-manager-integration.mjs` |
+| `MANAGER_READ_COOKIE` | Authorized Manager reader session for persisted log evidence; keep private | `scripts/check-manager-integration.mjs` |
+| `APP_ORIGIN_DEGRADED` | Second app instance with unreachable Manager | `scripts/check-manager-integration.mjs` |
+| `MANAGER_MODULE` | Optional pure config module path override | `scripts/measure-log-delivery.mjs` |
+| `MEASURE_CHUNK` | Paced burst chunk size (default 20) | `scripts/measure-log-delivery.mjs` |
+| `MEASURE_GAP_MS` | Delay between chunks (default 100ms) | `scripts/measure-log-delivery.mjs` |
+
 
 ---
 
@@ -649,3 +609,149 @@ sharing; and the real SDK surface.
 The following were deleted because their data is now served from MongoDB with Base64-encoded images:
 - `avatars/` (amara.png, daniel.png, sofia.png)
 - `projects/` (all old placeholder project images)
+
+## Manager request delivery update (2026-09-30)
+
+- `lib/manager/config.ts` → import-free server/browser configuration. Functions: `clean` normalizes optional values; `managerTrackerScript` describes analytics independently of logging. Constants: `managerConfig`, `managerClientConfig`; literal public env reads stay in this module.
+- `lib/manager/server.ts` → server-only SDK lifecycle, shared queue and request-local tracing. Functions: `cachedLogger`, `startManagerLogger`, `getManagerLogger`, `managerLog`, `scheduleUrgentFlush` (nested `send`), `getManagerDroppedCount`, `logServerEvent`, `logServerError`, `getRequestTraceId`, `flushManagerLogger`, `withManagerLogs` (returned request handler). Routes adopt browser traces without changing the root logger; success, handled errors, throws and redirects schedule `after` delivery.
+- `lib/manager/index.ts` → server facade re-exporting config/server; no functions.
+- `lib/manager/ManagerProvider.tsx` → browser-only singleton logging plus independent analytics. Functions: `ManagerProvider`, `startClientLogger`, `injectTracker`. A window slot and tracker element ID prevent duplicate capture during remounts; only config and SDK are imported.
+- Environment references moved: all `MANAGER_*` / `NEXT_PUBLIC_MANAGER_*` configuration lives in `config.ts`; `MANAGER_LOG_SOURCE` is obsolete (Manager derives source from key kind). `NODE_ENV`, `VERCEL_GIT_COMMIT_SHA`, `GIT_SHA` are read by `server.ts`; `NODE_ENV` and `NEXT_PUBLIC_RELEASE` by the provider.
+
+All six `app/api/**/route.ts` files now export `withManagerLogs(handleGET/handlePOST)` and keep their existing validation/responses. Additional handled failure reporting covers project list, image and gallery. Helpers `handleGET` / `handlePOST` replace the old exported function names; exported verbs remain unchanged.
+
+- `tests/manager-request.test.js` → concurrent trace isolation, completion status/privacy, uncaught/redirect/rejected paths, SDK failures, disabled configuration, full route coverage and browser module boundaries. Helpers: `load`, `fakeLogger`, `routeFiles`.
+- `tests/manager-integration.test.js` → static public configuration guard follows `config.ts`; logger registries are shut down and fetch is stubbed between tests. Helpers: `setEnv`, `loadManager`; no leaked queues or network traffic.
+
+- `tests/manager-provider.test.js` → singleton/remount, analytics-only, logs-only, private-key separation and logger-failure browser regressions. Helper: `mount`; mocked effects/scripts keep tests isolated.
+
+`app/api/testimonials/route.ts` / `handleGET` takes no named arguments; the Manager wrapper still accepts the framework request at runtime.
+
+- `.env.example` → updated configuration template; obsolete Manager source setting removed. Admin template uses `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` and no Brevo auth variables. No functions. Local `.env.local` remains ignored and stores private owner credentials.
+
+- `lib/manager/server-options.ts` → shared `FLUSH_INTERVAL_MS` and `REDACT_KEYS`; no functions/imports. Server, provider and standalone measurement use the same options.
+- `scripts/measure-log-delivery.mjs` → Node type-resolution hook, intercepted fetch and batched SDK measurement; imports config/SDK/shared options directly, with explicit final flush. Helpers: resolve hook `resolve`, wrapped `fetch`, `managerLog`, `getManagerDroppedCount`; avoids server-only Next request APIs. `MANAGER_MODULE` now overrides the pure config-module path.
+
+- `scripts/check-manager-integration.mjs` → all three key channels require exact accepted/rejected counts, wrong-kind/unknown-key denials, real app responses, optional stored trace/completion verification and explicit outage instance. Functions: `check`, `post`. Environment: `MANAGER_ENDPOINT`, `MANAGER_APP_ID`, `MANAGER_LOG_KEY`, `MANAGER_CLIENT_KEY` or `NEXT_PUBLIC_MANAGER_CLIENT_KEY`, `MANAGER_ANALYTICS_KEY` or `NEXT_PUBLIC_MANAGER_ANALYTICS_KEY`, `APP_ORIGIN`, `MANAGER_READ_COOKIE` (authorized reader session), `APP_ORIGIN_DEGRADED`. Missing live evidence is reported as a skip.
+
+Live checker posts use the application Origin and a browser User-Agent so analytics acceptance exercises the project origin/bot policy.
+
+Checker analytics auth uses the canonical event body `key`; log auth remains the private/client key header.
+
+`scheduleUrgentFlush` also catches synchronous flush exceptions from trailing timers; telemetry failures never become uncaught application errors.
+
+`tests/manager-integration.test.js` includes urgent trailing-flush synchronous-failure regression coverage.
+
+Urgent-timer regression advances fake timers and fails on any thrown callback; it does not assume the timer API returns undefined.
+
+- `docs/suggestions.md` → dated implemented integration/login fixes and remaining shared-limiter consideration. No functions.
+
+- `README.md` → current complete Manager channels, trace/delivery/outage behavior, shared portfolio/admin content and verification setup; stale tracker blocker removed after current Manager header inspection. No functions.
+
+### SDK synchronization (2026-09-30)
+
+`lib/manager/logger.ts` is downloaded byte-for-byte from the current Manager `/api/sdk/logger` endpoint. `sameOrigin()` restricts trace headers to same-origin requests. `installFetch()` now clones caller headers (object, tuples, Headers or Request inheritance) and propagates browser traces without mutating options or causing third-party CORS preflights. Generated SDK source should be updated from Manager rather than edited locally.
+
+`tests/manager-browser.test.js` verifies real SDK trace propagation for no-init, object, tuple, Headers and Request forms; caller immutability, cross-origin exclusion, error/rejection capture, in-flight console capture, grouping across flushes and traces, structured error stacks and pre-upload password redaction. `trace()` reads the intercepted trace header. Included in `npm test`.
+
+### Delivery measurement acceptance (2026-09-30)
+
+`scripts/measure-log-delivery.mjs` measures the standalone SDK/config, reports attempted and actually accepted entries separately, validates Manager response acceptance/rejection counts, and exits nonzero on missing delivery, transport rejection or SDK drops.
+
+## Integration verification follow-up (2026-09-30)
+
+`docs/verification/manager-integration-2026-09-30.md` records the current cross-app regression, production-build, browser/API/database, key separation, redaction, trace correlation, analytics, outage and burst-delivery evidence with reproduction steps and limitations. No executable functions.
+
+## Testimonials temporarily hidden (2026-09-30)
+
+`app/testimonials/page.tsx`: `TestimonialsPage()` calls Next `notFound()` so direct navigation returns 404 and does not initialize the carousel. `components/navbar.tsx`: the testimonials link is removed from the shared desktop/mobile navigation. The homepage already contains no testimonial section. Existing testimonial storage, read API and admin editing remain available for future publication. `tests/testimonials-visibility.test.js` verifies the denied page and lack of a navigation link; no env toggle is required.
+
+## Complete current file and named-function inventory (2026-09-30)
+
+Includes every current tracked/unignored project file; removed files, generated build output, dependencies and private environments are excluded. Function declarations, named callbacks, assigned arrows and object methods are inventoried below; inline UI/test callbacks are described by their containing feature/suite. Detailed behavior and environment references above remain authoritative.
+
+| File | Main purpose | Functions and roles |
+|---|---|---|
+| `.env.example` | Placeholder environment template | None (declarations/data/configuration or inline callbacks only). |
+| `.gitignore` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `AGENTS.md` | Repository working instructions | None (declarations/data/configuration or inline callbacks only). |
+| `README.md` | Setup, behavior and verification guide | None (declarations/data/configuration or inline callbacks only). |
+| `app/about/page.tsx` | Route UI and server rendering | `AboutPage` — renders about page |
+| `app/api/contact/route.ts` | Server HTTP endpoint | `sendBrevoEmail` — send brevo email helper for server http endpoint; `handlePOST` — handles the validated POST operation |
+| `app/api/projects/[slug]/gallery/[index]/route.ts` | Server HTTP endpoint | `handleGET` — handles the public data/image read |
+| `app/api/projects/[slug]/image/route.ts` | Server HTTP endpoint | `handleGET` — handles the public data/image read |
+| `app/api/projects/[slug]/route.ts` | Server HTTP endpoint | `handleGET` — handles the public data/image read |
+| `app/api/projects/route.ts` | Server HTTP endpoint | `handleGET` — handles the public data/image read |
+| `app/api/testimonials/route.ts` | Server HTTP endpoint | `handleGET` — handles the public data/image read |
+| `app/contact/page.tsx` | Route UI and server rendering | `ContactPage` — renders contact page |
+| `app/global-error.tsx` | Project configuration or metadata | `GlobalError` — renders global error |
+| `app/globals.css` | Application styling or icon | None (declarations/data/configuration or inline callbacks only). |
+| `app/layout.tsx` | Project configuration or metadata | `RootLayout` — renders root layout |
+| `app/not-found.tsx` | Project configuration or metadata | `NotFound` — renders not found |
+| `app/page.tsx` | Route UI and server rendering | `HomePage` — renders home page |
+| `app/projects/[slug]/page.tsx` | Route UI and server rendering | `generateMetadata` — generate metadata helper for route ui and server rendering; `ProjectPage` — renders project page |
+| `app/projects/error.tsx` | Project configuration or metadata | `ProjectsError` — renders projects error |
+| `app/projects/loading.tsx` | Project configuration or metadata | `ProjectsLoading` — renders projects loading |
+| `app/projects/page.tsx` | Route UI and server rendering | `ProjectsPage` — renders projects page |
+| `app/template.tsx` | Project configuration or metadata | `Template` — renders template |
+| `app/testimonials/page.tsx` | Route UI and server rendering | `TestimonialsPage` — Testimonials are temporarily unpublished; retain the route for later restoration. |
+| `components.json` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `components/about/about-content.tsx` | Reusable UI component | `AboutContent` — renders about content |
+| `components/contact/contact-form.tsx` | Reusable UI component | `ContactForm` — renders contact form; `handleSubmit` — handle submit helper for reusable ui component |
+| `components/footer.tsx` | Reusable UI component | `Footer` — renders footer |
+| `components/gold-button.tsx` | Reusable UI component | `GoldButtonLink` — renders gold button link; `GoldButton` — renders gold button |
+| `components/hero-background.tsx` | Reusable UI component | `HeroBackground` — renders hero background; `resize` — resize helper for reusable ui component; `draw` — draw helper for reusable ui component; `onMove` — on move helper for reusable ui component |
+| `components/home/about-teaser.tsx` | Reusable UI component | `AboutTeaser` — renders about teaser |
+| `components/home/featured-section.tsx` | Reusable UI component | `FeaturedSection` — renders featured section |
+| `components/home/hero-section.tsx` | Reusable UI component | `show` — show helper for reusable ui component; `HeroSection` — renders hero section; `handleMove` — handle move helper for reusable ui component |
+| `components/navbar.tsx` | Reusable UI component | `Navbar` — renders navbar; `onScroll` — on scroll helper for reusable ui component; `isActive` — is active helper for reusable ui component; `onKeyDown` — on key down helper for reusable ui component |
+| `components/page-heading.tsx` | Reusable UI component | `PageHeading` — renders page heading |
+| `components/project-card.tsx` | Reusable UI component | `ProjectCard` — renders project card; `handleMove` — handle move helper for reusable ui component; `handleLeave` — handle leave helper for reusable ui component; `FeaturedCard` — renders featured card |
+| `components/projects/project-detail.tsx` | Reusable UI component | `ProjectDetail` — renders project detail |
+| `components/projects/projects-gallery.tsx` | Reusable UI component | `ProjectsGallery` — renders projects gallery |
+| `components/reveal.tsx` | Reusable UI component | `Reveal` — renders reveal |
+| `components/testimonials/testimonials-carousel.tsx` | Reusable UI component | `TestimonialsCarousel` — renders testimonials carousel |
+| `components/ui/button.tsx` | Reusable UI component | `Button` — renders button |
+| `docs/architecture.md` | Current file/function and environment inventory | None (declarations/data/configuration or inline callbacks only). |
+| `docs/suggestions.md` | Project documentation and verification | None (declarations/data/configuration or inline callbacks only). |
+| `docs/to-do.md` | Project documentation and verification | None (declarations/data/configuration or inline callbacks only). |
+| `docs/verification/manager-integration-2026-09-30.md` | Project documentation and verification | None (declarations/data/configuration or inline callbacks only). |
+| `eslint.config.mjs` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `lib/manager/ManagerProvider.tsx` | Manager logging/analytics integration | `ManagerProvider` — renders manager provider; `startClientLogger` — initializes one browser SDK instance; `injectTracker` — injects one analytics tag |
+| `lib/manager/config.ts` | Manager logging/analytics integration | `clean` — normalizes optional configuration values; `managerTrackerScript` — describes independent browser analytics |
+| `lib/manager/index.ts` | Manager logging/analytics integration | None (declarations/data/configuration or inline callbacks only). |
+| `lib/manager/logger.ts` | Generated Manager logging SDK | `isBrowser` — is browser helper for generated manager logging sdk; `trim` — trim helper for generated manager logging sdk; `stripControl` — strip control helper for generated manager logging sdk; `stringify` — stringify helper for generated manager logging sdk; `randomToken` — random token helper for generated manager logging sdk; `escapePattern` — escape pattern helper for generated manager logging sdk; `redactString` — redact string helper for generated manager logging sdk; `redactValue` — redact value helper for generated manager logging sdk; `fingerprint` — fingerprint helper for generated manager logging sdk; `stackOf` — stack of helper for generated manager logging sdk; `timeZone` — time zone helper for generated manager logging sdk; `clientContext` — client context helper for generated manager logging sdk; `serverContext` — server context helper for generated manager logging sdk; `baseContext` — base context helper for generated manager logging sdk; `withinCaps` — within caps helper for generated manager logging sdk; `buildEntry` — build entry helper for generated manager logging sdk; `takeTokens` — take tokens helper for generated manager logging sdk; `reportDrops` — Surfaces silently-discarded entries as a single warn-level entry, so a client that outran its own ceiling is visible in the log viewer instead of quie; `shouldSample` — should sample helper for generated manager logging sdk; `storage` — storage helper for generated manager logging sdk; `readOffline` — read offline helper for generated manager logging sdk; `writeOffline` — write offline helper for generated manager logging sdk; `resolveFetch` — resolve fetch helper for generated manager logging sdk; `statusOf` — status of helper for generated manager logging sdk; `splitBySize` — split by size helper for generated manager logging sdk; `post` — posts a bounded Manager ingest request; `beacon` — beacon helper for generated manager logging sdk; `storeOffline` — store offline helper for generated manager logging sdk; `deliver` — deliver helper for generated manager logging sdk; `unref` — unref helper for generated manager logging sdk; `clearRetry` — clear retry helper for generated manager logging sdk; `clearFlush` — clear flush helper for generated manager logging sdk; `scheduleFlush` — schedule flush helper for generated manager logging sdk; `scheduleRetry` — schedule retry helper for generated manager logging sdk; `runFlush` — run flush helper for generated manager logging sdk; `flush` — flush helper for generated manager logging sdk; `collapseRepeat` — collapse repeat helper for generated manager logging sdk; `enqueue` — enqueue helper for generated manager logging sdk; `rootBindings` — root bindings helper for generated manager logging sdk; `makeMethod` — make method helper for generated manager logging sdk; `createLogger` — create logger helper for generated manager logging sdk; `child` — child helper for generated manager logging sdk; `time` — time helper for generated manager logging sdk; `timeEnd` — time end helper for generated manager logging sdk; `setContext` — set context helper for generated manager logging sdk; `withTrace` — with trace helper for generated manager logging sdk; `newTrace` — new trace helper for generated manager logging sdk; `traceId` — trace id helper for generated manager logging sdk; `sessionId` — session id helper for generated manager logging sdk; `droppedCount` — dropped count helper for generated manager logging sdk; `installConsole` — install console helper for generated manager logging sdk; `installGlobalErrors` — install global errors helper for generated manager logging sdk; `report` — report helper for generated manager logging sdk; `injectTraceHeader` — inject trace header helper for generated manager logging sdk; `describeInput` — describe input helper for generated manager logging sdk; `sameOrigin` — same origin helper for generated manager logging sdk; `installFetch` — install fetch helper for generated manager logging sdk; `drain` — drain helper for generated manager logging sdk; `installUnload` — install unload helper for generated manager logging sdk; `onHide` — on hide helper for generated manager logging sdk; `installShutdown` — install shutdown helper for generated manager logging sdk; `handler` — handler helper for generated manager logging sdk; `bumpPage` — bump page helper for generated manager logging sdk; `installGlobals` — install globals helper for generated manager logging sdk; `normalizeEndpoint` — normalize endpoint helper for generated manager logging sdk; `normalizeConsoleLevels` — normalize console levels helper for generated manager logging sdk; `normalizeSampleRate` — normalize sample rate helper for generated manager logging sdk; `clamp` — clamp helper for generated manager logging sdk; `positiveInt` — positive int helper for generated manager logging sdk; `createState` — create state helper for generated manager logging sdk; `initLogger` — init logger helper for generated manager logging sdk; `traceIdFromHeaders` — trace id from headers helper for generated manager logging sdk; `shutdownLoggers` — shutdown loggers helper for generated manager logging sdk |
+| `lib/manager/server-options.ts` | Manager logging/analytics integration | None (declarations/data/configuration or inline callbacks only). |
+| `lib/manager/server.ts` | Manager logging/analytics integration | `noop` — provides disabled logging behavior; `child` — child helper for manager logging/analytics integration; `timeEnd` — time end helper for manager logging/analytics integration; `flush` — flush helper for manager logging/analytics integration; `droppedCount` — dropped count helper for manager logging/analytics integration; `withTrace` — with trace helper for manager logging/analytics integration; `newTrace` — new trace helper for manager logging/analytics integration; `cachedLogger` — reads the process-wide cached logger; `startManagerLogger` — initializes one server logger; `getManagerLogger` — resolves the configured or disabled server logger; `managerLog` — emits request-local or root log entries safely; `scheduleUrgentFlush` — flushes urgent errors with burst throttling; `send` — sends the urgent logger batch safely; `getManagerDroppedCount` — reports SDK discards; `logServerEvent` — records a safe server outcome; `logServerError` — records an exception with stack metadata; `getRequestTraceId` — reads the current isolated request trace; `flushManagerLogger` — flushes the root queue without surfacing transport failures; `withManagerLogs` — wraps request trace/outcome/completion delivery |
+| `lib/models.ts` | Shared application helper/data model | None (declarations/data/configuration or inline callbacks only). |
+| `lib/mongodb.ts` | Shared application helper/data model | `connectDB` — connects and caches MongoDB access |
+| `lib/motion.ts` | Shared application helper/data model | `stagger` — stagger helper for shared application helper/data model |
+| `lib/projects.ts` | Shared application helper/data model | `serialize` — Recursively strip non-plain values (MongoDB ObjectId, Date, etc.) from a lean document so it's safe to pass to a Client Component; `getAllProjects` — get all projects helper for shared application helper/data model; `getProjectBySlug` — get project by slug helper for shared application helper/data model; `getNextProject` — get next project helper for shared application helper/data model; `getAllTechTags` — get all tech tags helper for shared application helper/data model |
+| `lib/rate-limit.ts` | Shared application helper/data model | `sweep` — sweep helper for shared application helper/data model; `checkRateLimit` — check rate limit helper for shared application helper/data model; `resetRateLimiter` — reset rate limiter helper for shared application helper/data model; `clientIp` — Best-effort client IP from proxy headers, falling back to a shared bucket. |
+| `lib/types.ts` | Shared application helper/data model | None (declarations/data/configuration or inline callbacks only). |
+| `lib/utils.ts` | Shared application helper/data model | `cn` — cn helper for shared application helper/data model |
+| `lib/validate.ts` | Shared application helper/data model | `isNonEmptyString` — is non empty string helper for shared application helper/data model; `isValidEmail` — is valid email helper for shared application helper/data model; `escapeHtml` — Escape text for interpolation into HTML email bodies.; `isHoneypotTripped` — Honeypot: bots fill hidden fields, humans never see them.; `isWithinLimit` — is within limit helper for shared application helper/data model; `exceedsAnyLimit` — exceeds any limit helper for shared application helper/data model; `hasDollarKey` — Mongo treats top-level $-prefixed keys as atomic update operators.; `pick` — Allow-list projection — anything not listed is dropped.; `isValidExternalUrl` — Project links must be absolute http(s) URLs or empty.; `hasInvalidProjectUrl` — has invalid project url helper for shared application helper/data model |
+| `next-env.d.ts` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `next.config.mjs` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `package-lock.json` | Dependency lockfile | None (declarations/data/configuration or inline callbacks only). |
+| `package.json` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `postcss.config.mjs` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |
+| `public/apple-icon.png` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/icon-dark-32x32.png` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/icon-light-32x32.png` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/icon.svg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/placeholder-logo.png` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/placeholder-logo.svg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/placeholder-user.jpg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/placeholder.jpg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/placeholder.svg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `public/portrait.jpeg` | Static browser asset | None (declarations/data/configuration or inline callbacks only). |
+| `scripts/check-manager-integration.mjs` | Integration verification utility | `check` — records live-check success or failure; `post` — posts a bounded Manager ingest request |
+| `scripts/measure-log-delivery.mjs` | Integration verification utility | `resolve` — resolve helper for integration verification utility; `managerLog` — emits request-local or root log entries safely; `getManagerDroppedCount` — reports SDK discards |
+| `tests/manager-browser.test.js` | Automated regression suite | `pushState` — push state helper for automated regression suite; `replaceState` — replace state helper for automated regression suite; `addEventListener` — add event listener helper for automated regression suite; `getItem` — get item helper for automated regression suite; `setItem` — set item helper for automated regression suite; `removeItem` — remove item helper for automated regression suite; `trace` — trace helper for automated regression suite |
+| `tests/manager-integration.test.js` | Automated regression suite | `setEnv` — isolates Manager environment configuration for tests; `loadManager` — reloads config and tracks SDK cleanup; `flush` — flush helper for automated regression suite; `droppedCount` — dropped count helper for automated regression suite |
+| `tests/manager-provider.test.js` | Automated regression suite | `useEffect` — use effect helper for automated regression suite; `getElementById` — get element by id helper for automated regression suite; `createElement` — create element helper for automated regression suite; `appendChild` — append child helper for automated regression suite; `mount` — runs the mocked provider effect |
+| `tests/manager-request.test.js` | Automated regression suite | `after` — after helper for automated regression suite; `load` — loads test server modules with teardown; `fakeLogger` — records test log entries with isolated traces; `droppedCount` — dropped count helper for automated regression suite; `routeFiles` — enumerates route modules for wrapper coverage |
+| `tests/testimonials-visibility.test.js` | Automated regression suite | `notFound` — not found helper for automated regression suite |
+| `tests/validate.test.ts` | Automated regression suite | None (declarations/data/configuration or inline callbacks only). |
+| `tsconfig.json` | Project configuration or metadata | None (declarations/data/configuration or inline callbacks only). |

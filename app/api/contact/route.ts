@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { ContactMessage } from '@/lib/models'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
-import { logServerError } from '@/lib/manager'
+import { logServerError, withManagerLogs } from '@/lib/manager'
 import {
   CONTACT_FIELD_LIMITS,
   escapeHtml,
@@ -88,7 +88,7 @@ async function sendBrevoEmail({
   }
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const rate = checkRateLimit(clientIp(request.headers))
   if (!rate.allowed) {
     return NextResponse.json(
@@ -165,3 +165,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withManagerLogs(handlePOST)

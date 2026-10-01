@@ -1,3 +1,4 @@
+import { logServerError, withManagerLogs } from '@/lib/manager'
 import { NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
 import { Project } from '@/lib/models'
@@ -7,7 +8,7 @@ import { Project } from '@/lib/models'
  * Returns a proper binary response so the browser can cache it independently
  * of the RSC payload.
  */
-export async function GET(
+async function handleGET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -45,6 +46,9 @@ export async function GET(
     })
   } catch (error) {
     console.error('GET /api/projects/[slug]/image error:', error)
+    logServerError('portfolio_request_failed', error)
     return new NextResponse(null, { status: 500 })
   }
 }
+
+export const GET = withManagerLogs(handleGET)
